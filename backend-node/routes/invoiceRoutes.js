@@ -82,8 +82,9 @@ router.post("/upload", upload.single("invoice"), async (req, res) => {
         // Call FastAPI pipeline for AI extraction
         let aiData = null;
         try {
+            const aiWorkerUrl = process.env.AI_WORKER_URL || "http://127.0.0.1:8000";
             const aiResponse = await require("axios").post(
-                "http://127.0.0.1:8000/process",
+                `${aiWorkerUrl}/process`,
                 { file: fileUrl },
                 { timeout: 60000 }
             );

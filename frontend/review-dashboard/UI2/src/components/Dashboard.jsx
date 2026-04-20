@@ -33,7 +33,7 @@ import CementRegisterBlock from './CementRegisterBlock';
 import VoucherDialog from './VoucherDialog';
 import TruckContactManager from './TruckContactManager';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 const Dashboard = ({ onUploadNew, onOpenLorrySlip, onOpenFuelSlip, onOpenCementRegister, onOpenVoucherRegister, onOpenGSTPortalRegister, onOpenMainCashbook, onOpenPumpPayment, onOpenPartyPayment, onOpenFYDetails, onOpenFuelRateSettings }) => {
     const { user, logout } = useAuth();

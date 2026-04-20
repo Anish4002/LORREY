@@ -28,13 +28,14 @@ import EditIcon from "@mui/icons-material/Edit";
 import DocumentScannerIcon from "@mui/icons-material/DocumentScanner";
 import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
 import RemoveCircleOutlineIcon from "@mui/icons-material/RemoveCircleOutline";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import axios from "axios";
 import html2pdf from "html2pdf.js";
 import { io } from "socket.io-client";
 import { API_URL } from "../config";
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_IO_URL || API_URL;
-const socket = io(SOCKET_URL, { autoConnect: true });
+const socket = io('/', { autoConnect: true });
 
 import { toIndianWords } from "../utils/toIndianWords";
 import InvoiceDetails from "./InvoiceDetails";
@@ -501,43 +502,44 @@ export default function InvoiceForm({ onBack }) {
           }}
           className="no-print"
         >
-          <Box display="flex" gap={2}>
-            <Button variant="outlined" size="small" onClick={() => setShowGCN(false)}>
-              ← Back to Invoice
+          <Box display="flex" gap={1} sx={{ flexWrap: 'wrap', width: { xs: '100%', md: 'auto' } }}>
+            <Button variant="outlined" size="small" onClick={() => setShowGCN(false)} sx={{ flex: { xs: 1, md: 'none' } }}>
+              ← Invoice
             </Button>
-            <Button variant="outlined" size="small" color="error" onClick={() => window.location.href = '/'}>
-              Back to Dashboard
+            <Button variant="outlined" size="small" color="error" onClick={() => window.location.href = '/'} sx={{ flex: { xs: 1, md: 'none' } }}>
+              Home
             </Button>
             <Button
               variant="contained"
               size="small"
               onClick={() => setShowLorrySlip(true)}
               sx={{
+                flex: { xs: '1 1 100%', md: 'none' },
                 borderRadius: '8px', fontWeight: 700,
                 background: 'linear-gradient(45deg, #f57c00, #ff9800)',
                 boxShadow: '0 4px 12px rgba(245,124,0,0.35)',
                 '&:hover': { background: 'linear-gradient(45deg, #e65100, #f57c00)' },
               }}
             >
-              🚚 Generate Lorry Hire Slip
+              🚚 Lorry Hire Slip
             </Button>
           </Box>
-          <Box display="flex" gap={1.5}>
+          <Box display="flex" gap={1} sx={{ mt: { xs: 1, md: 0 }, width: { xs: '100%', md: 'auto' } }}>
             <Button
               variant="outlined"
               size="small"
               startIcon={<EditIcon />}
               onClick={() => setShowGCN(false)}
-              sx={{ borderRadius: 2, px: 2, borderColor: 'primary.main', color: 'primary.main' }}
+              sx={{ borderRadius: 2, flex: 1, px: 2, borderColor: 'primary.main', color: 'primary.main' }}
             >
-              Edit Details
+              Edit
             </Button>
             <Button
               variant="outlined"
               size="small"
               startIcon={<PrintIcon />}
               onClick={handlePrint}
-              sx={{ borderRadius: 2 }}
+              sx={{ borderRadius: 2, flex: 1 }}
             >
               Print
             </Button>
@@ -546,9 +548,9 @@ export default function InvoiceForm({ onBack }) {
               size="small"
               startIcon={<DownloadIcon />}
               onClick={handleDownload}
-              sx={{ borderRadius: 2 }}
+              sx={{ borderRadius: 2, flex: 1 }}
             >
-              Download PDF
+              PDF
             </Button>
           </Box>
         </Box>
@@ -580,36 +582,36 @@ export default function InvoiceForm({ onBack }) {
           }}
           className="no-print"
         >
-          <Box display="flex" gap={2}>
-            <Button variant="outlined" size="small" onClick={() => window.location.href = '/'}>
-              Back to Dashboard
+          <Box display="flex" gap={1} sx={{ flexWrap: 'wrap', width: { xs: '100%', md: 'auto' } }}>
+            <Button variant="outlined" size="small" onClick={() => window.location.href = '/'} sx={{ flex: { xs: 1, md: 'none' } }}>
+              Home
             </Button>
             <Button
               variant="contained"
               size="small"
               color="success"
               onClick={() => setShowGCN(true)}
-              sx={{ borderRadius: '8px', fontWeight: 700 }}
+              sx={{ flex: { xs: 1, md: 'none' }, borderRadius: '8px', fontWeight: 700 }}
             >
-              📋 Generate GCN Copy
+              📋 GCN Copy
             </Button>
           </Box>
-          <Box display="flex" gap={1.5}>
+          <Box display="flex" gap={1} sx={{ mt: { xs: 1, md: 0 }, width: { xs: '100%', md: 'auto' } }}>
             <Button
               variant="outlined"
               size="small"
               startIcon={<EditIcon />}
               onClick={() => setShowInvoice(false)}
-              sx={{ borderRadius: 2, px: 2, borderColor: 'primary.main', color: 'primary.main' }}
+              sx={{ borderRadius: 2, flex: 1, px: 2, borderColor: 'primary.main', color: 'primary.main' }}
             >
-              Edit Details
+              Edit
             </Button>
             <Button
               variant="outlined"
               size="small"
               startIcon={<PrintIcon />}
               onClick={handlePrint}
-              sx={{ borderRadius: 2 }}
+              sx={{ borderRadius: 2, flex: 1 }}
             >
               Print
             </Button>
@@ -618,9 +620,9 @@ export default function InvoiceForm({ onBack }) {
               size="small"
               startIcon={<DownloadIcon />}
               onClick={handleDownload}
-              sx={{ borderRadius: 2 }}
+              sx={{ borderRadius: 2, flex: 1 }}
             >
-              Download PDF
+              PDF
             </Button>
           </Box>
         </Box>
@@ -638,19 +640,20 @@ export default function InvoiceForm({ onBack }) {
         onClose={() => setIsScannerOpen(false)} 
         onCapture={handleScannerCapture} 
     />
-    <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
+    <Container maxWidth="xl" sx={{ mt: 4, pb: 14 }}>
       <Paper
         elevation={0}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         sx={{
-          p: { xs: 3, md: 6 },
+          p: { xs: 2.5, md: 6 },
           borderRadius: 2,
           border: isDragActive ? "2px dashed #1a73e8" : "1px solid #e0e0e0",
           backgroundColor: isDragActive ? "rgba(26,115,232,0.04)" : "#ffffff",
           position: "relative",
           transition: "all 0.2s ease",
+          boxShadow: { xs: 'none', md: '0 4px 12px rgba(0,0,0,0.05)' }
         }}
       >
         {isDragActive && (
@@ -671,67 +674,67 @@ export default function InvoiceForm({ onBack }) {
         )}
         <PremiumLoadingOverlay isProcessing={isProcessing} mode={processingMode} />
 
-        <Box
-          display="flex"
-          justifyContent="space-between"
-          alignItems="flex-start"
-          mb={4}
-          sx={{ flexDirection: { xs: 'column', md: 'row' }, gap: 2 }}
-        >
-          <Box display="flex" alignItems="center" gap={2}>
-            <Button
-              variant="outlined"
+        <Box sx={{ mb: 4 }}>
+          {/* Header & Back Button */}
+          <Box display="flex" alignItems="flex-start" gap={1.5} mb={2.5}>
+            <IconButton
               onClick={() => window.location.href = '/'}
               disabled={isProcessing}
-              sx={{ minWidth: "auto", px: 2, borderRadius: '8px' }}
+              sx={{ bgcolor: '#f1f5f9', color: '#334155', borderRadius: '12px', mt: 0.5, boxShadow: '0 2px 5px rgba(0,0,0,0.05)', '&:hover': { bgcolor: '#e2e8f0' } }}
             >
-              Back
-            </Button>
+              <ArrowBackIcon />
+            </IconButton>
             <Box>
               <Typography
-                variant="h3"
+                variant="h4"
                 fontWeight="900"
                 color="primary"
                 sx={{
                   letterSpacing: '-1px',
-                  fontSize: { xs: '1.75rem', md: '3rem' }
+                  fontSize: { xs: '1.5rem', md: '2.5rem' },
+                  lineHeight: 1.15
                 }}
               >
                 DIPALI ASSOCIATES & CO
               </Typography>
-              <Typography variant="h6" color="text.secondary" fontWeight="400" sx={{ fontSize: { xs: '0.85rem', md: '1.25rem' } }}>
-                Upload PDF or Image. AI will extract data for your review.
+              <Typography variant="body2" color="text.secondary" fontWeight="500" sx={{ mt: 0.5, fontSize: { xs: '0.85rem', md: '1.1rem' } }}>
+                Upload PDF or Image. AI will automatically extract data for review.
               </Typography>
             </Box>
           </Box>
-          <Box display="flex" gap={2} sx={{ width: { xs: '100%', md: 'auto' }, justifyContent: { xs: 'space-between', md: 'flex-end' } }}>
+
+          {/* Action Buttons (Scan & Upload) */}
+          <Box display="flex" gap={1.5} sx={{ flexDirection: { xs: 'row', sm: 'row' }, width: '100%' }}>
             <Button
-              variant="outlined"
-              color="error"
-              onClick={logout}
-              sx={{ borderRadius: '8px', px: 3 }}
-              disabled={isProcessing}
-            >
-              Logout
-            </Button>
-            <Button
+              fullWidth
               variant="contained"
               color="secondary"
               startIcon={isScanTriggered ? <CircularProgress size={16} color="inherit" /> : <DocumentScannerIcon />}
               onClick={handlePhysicalScan}
-              sx={{ borderRadius: '8px', px: 3, background: 'linear-gradient(45deg, #7b1fa2, #9c27b0)', boxShadow: '0 4px 12px rgba(123,31,162,0.3)', '&:hover': { background: 'linear-gradient(45deg, #6a1b9a, #8e24aa)' } }}
+              sx={{ 
+                borderRadius: '12px', py: { xs: 1.2, md: 1.5 }, fontWeight: 800, fontSize: { xs: '0.9rem', md: '1rem' },
+                background: 'linear-gradient(45deg, #7b1fa2, #9c27b0)', 
+                boxShadow: '0 4px 12px rgba(123,31,162,0.3)',
+                whiteSpace: 'nowrap'
+              }}
               disabled={isProcessing || isScanTriggered}
             >
-              {isScanTriggered ? 'Scanning...' : 'Scan from Printer'}
+              {isScanTriggered ? 'Scanning...' : 'Scan'}
             </Button>
             <Button
+              fullWidth
               variant="contained"
               component="label"
               startIcon={<UploadFileIcon />}
-              sx={{ borderRadius: '8px', px: 3 }}
+              sx={{ 
+                borderRadius: '12px', py: { xs: 1.2, md: 1.5 }, fontWeight: 800, fontSize: { xs: '0.9rem', md: '1rem' }, 
+                bgcolor: '#0052cc', '&:hover': { bgcolor: '#0043a8' },
+                boxShadow: '0 4px 12px rgba(0,82,204,0.3)',
+                whiteSpace: 'nowrap'
+              }}
               disabled={isProcessing}
             >
-              Upload Document
+              Upload
               <input
                 type="file"
                 hidden
@@ -742,28 +745,7 @@ export default function InvoiceForm({ onBack }) {
           </Box>
         </Box>
 
-        <Box display="flex" gap={2} mb={3} sx={{ flexWrap: 'wrap' }}>
-          <Button
-            variant="outlined"
-            color="secondary"
-            startIcon={<RestoreIcon />}
-            onClick={handleReset}
-            sx={{ borderRadius: '8px', flex: { xs: 1, sm: 'none' } }}
-            disabled={isProcessing}
-          >
-            Clear Form
-          </Button>
-          <Button
-            variant="contained"
-            color="primary"
-            startIcon={<SaveIcon />}
-            onClick={handleSave}
-            sx={{ borderRadius: '8px', flex: { xs: 1, sm: 'none' } }}
-            disabled={isProcessing}
-          >
-            Final Save
-          </Button>
-        </Box>
+
 
         {status && (
           <Alert severity={status.type} sx={{ mb: 3 }}>
@@ -888,6 +870,40 @@ export default function InvoiceForm({ onBack }) {
         <EwbDetails data={formData.ewb_details} errors={errors.ewb_details} onChange={handleChange} />
       </Paper>
     </Container>
+
+    {/* ── Fixed Bottom Actions Bar ── */}
+    <Paper elevation={16} sx={{ 
+      position: 'fixed', bottom: 0, left: 0, right: 0, 
+      zIndex: 1200, bgcolor: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(10px)',
+      borderTop: '1px solid rgba(0,0,0,0.08)', p: 2, pb: { xs: 3, sm: 2 }
+    }}>
+      <Container maxWidth="xl" disableGutters>
+        <Box display="flex" gap={2} justifyContent="center">
+          <Button
+            fullWidth
+            variant="outlined"
+            color="secondary"
+            startIcon={<RestoreIcon />}
+            onClick={handleReset}
+            sx={{ borderRadius: '12px', fontWeight: 800, py: 1.5, maxWidth: '300px', backgroundColor: '#fff' }}
+            disabled={isProcessing}
+          >
+            Reset
+          </Button>
+          <Button
+            fullWidth
+            variant="contained"
+            color="primary"
+            startIcon={<SaveIcon />}
+            onClick={handleSave}
+            sx={{ borderRadius: '12px', fontWeight: 900, py: 1.5, maxWidth: '300px', background: 'linear-gradient(45deg, #1a73e8, #1557b0)', boxShadow: '0 4px 15px rgba(26,115,232,0.4)', '&:hover': { background: '#1557b0' } }}
+            disabled={isProcessing}
+          >
+            Save All Data
+          </Button>
+        </Box>
+      </Container>
+    </Paper>
     </>
   );
 }

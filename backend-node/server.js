@@ -5,6 +5,8 @@ const cors = require("cors");
 const axios = require("axios");
 const mongoose = require("mongoose");
 const http = require("http");
+const https = require("https");
+const fs = require("fs");
 const { init: initSocket } = require("./socket");
 const { startWatcher } = require("./utils/scannerWatcher");
 
@@ -17,7 +19,21 @@ const softcopyUpload = require("./middleware/softcopyUpload");
 const gcnUpload = require("./middleware/gcnUpload");
 
 const app = express();
-const server = http.createServer(app);
+
+let server;
+const sslOptions = {
+  key: fs.existsSync("./key.pem") ? fs.readFileSync("./key.pem") : null,
+  cert: fs.existsSync("./cert.pem") ? fs.readFileSync("./cert.pem") : null
+};
+
+if (sslOptions.key && sslOptions.cert) {
+  server = https.createServer(sslOptions, app);
+  console.log("SSL Encryption Enabled (HTTPS)");
+} else {
+  server = http.createServer(app);
+  console.log("No SSL certificates found, running on HTTP");
+}
+
 initSocket(server);
 startWatcher();
 

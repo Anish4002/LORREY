@@ -205,14 +205,17 @@ const FuelSlipReview = ({ invoiceId, onBack, onOpenVoucher }) => {
                 margin: '0 auto',
                 display: 'flex',
                 justifyContent: 'space-between',
-                alignItems: 'center',
+                sx: { flexDirection: { xs: 'column', md: 'row' }, gap: 2 },
+                flexDirection: { xs: 'column', md: 'row' },
+                alignItems: { xs: 'stretch', md: 'center' },
                 mb: 4,
-                p: 2,
+                p: { xs: 1.5, md: 2 },
                 background: 'rgba(255, 255, 255, 0.7)',
                 backdropFilter: 'blur(10px)',
-                borderRadius: '24px',
+                borderRadius: { xs: '16px', md: '24px' },
                 boxShadow: '0 8px 32px rgba(0,0,0,0.05)',
-                border: '1px solid rgba(255,255,255,0.3)'
+                border: '1px solid rgba(255,255,255,0.3)',
+                gap: { xs: 2, md: 0 }
             }}>
                 <Box display="flex" alignItems="center" gap={2}>
                     <IconButton onClick={activeStep === 'review' ? () => setActiveStep('entry') : onBack} sx={{ bgcolor: 'rgba(0,0,0,0.05)', '&:hover': { bgcolor: 'rgba(0,0,0,0.1)' } }}>
@@ -228,32 +231,38 @@ const FuelSlipReview = ({ invoiceId, onBack, onOpenVoucher }) => {
                     </Box>
                 </Box>
 
-                <Box display="flex" gap={2}>
+                <Box display="flex" gap={1} sx={{ 
+                    flexDirection: { xs: 'row', sm: 'row' },
+                    flexWrap: 'wrap',
+                    width: { xs: '100%', md: 'auto' }
+                }}>
                     {activeStep === 'review' && (
                         <>
-                            <Button variant="outlined" startIcon={<PrintIcon />} onClick={() => window.print()} sx={{ borderRadius: '12px', fontWeight: 700 }}>Print</Button>
+                            <Button variant="outlined" size="small" startIcon={<PrintIcon />} onClick={() => window.print()} sx={{ borderRadius: '12px', fontWeight: 700, flex: 1 }}>Print</Button>
                             <Button
                                 variant="contained"
+                                size="small"
                                 startIcon={<DownloadIcon />}
                                 onClick={handleDownload}
                                 disabled={saving}
-                                sx={{ borderRadius: '12px', fontWeight: 700, background: 'linear-gradient(45deg, #1a237e, #3949ab)' }}
+                                sx={{ borderRadius: '12px', fontWeight: 700, background: 'linear-gradient(45deg, #1a237e, #3949ab)', flex: 1 }}
                             >
-                                Download PDF
+                                PDF
                             </Button>
                             {onOpenVoucher && (
                                 <Button
                                     variant="contained"
+                                    size="small"
                                     startIcon={<SaveIcon />}
                                     onClick={() => onOpenVoucher(invoiceId)}
-                                    sx={{ borderRadius: '12px', fontWeight: 700, background: 'linear-gradient(45deg, #e65100, #ff7043)', boxShadow: '0 6px 20px rgba(230,81,0,0.35)' }}
+                                    sx={{ borderRadius: '12px', fontWeight: 700, background: 'linear-gradient(45deg, #e65100, #ff7043)', flex: { xs: '1 1 100%', sm: 1 }, mt: { xs: 0.5, sm: 0 } }}
                                 >
-                                    Voucher Entry
+                                    Voucher
                                 </Button>
                             )}
                         </>
                     )}
-                    <Button variant="contained" startIcon={<DashboardIcon />} onClick={() => window.location.href = '/'} sx={{ borderRadius: '12px', fontWeight: 700, bgcolor: '#333' }}>Dashboard</Button>
+                    <Button variant="outlined" size="small" onClick={() => window.location.href = '/'} sx={{ borderRadius: '12px', fontWeight: 700, color: '#64748b', borderColor: '#e2e8f0', flex: { xs: 'none', sm: 'none' }, minWidth: '40px' }}>Home</Button>
                 </Box>
             </Box>
 

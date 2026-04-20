@@ -11,7 +11,8 @@ const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret_key";
 
 exports.signup = async (req, res) => {
     try {
-        const { email, password, role = 'OFFICE', pumpName = null } = req.body;
+        let { email, password, role = 'OFFICE', pumpName = null } = req.body;
+        if (email) email = email.trim().toLowerCase();
 
         // Check if user exists
         const existingUser = await User.findOne({ email });
@@ -38,7 +39,8 @@ exports.signup = async (req, res) => {
 
 exports.login = async (req, res) => {
     try {
-        const { email, password, role } = req.body;
+        let { email, password, role } = req.body;
+        if (email) email = email.trim().toLowerCase();
 
         const user = await User.findOne({ email });
         if (!user) {
@@ -63,8 +65,15 @@ exports.login = async (req, res) => {
     }
 };
 
-const rpName = 'Lorrey App';
-const rpID = 'localhost';
+const rpName = 'DIPALI ASSOCIATES & CO.';
+// WebAuthn rpID must be a valid domain — raw IP addresses are NOT allowed.
+// .local mDNS names (e.g. Gourabs-MacBook-Air.local) ARE valid domains.
+// When accessed via bare IPv4, fall back to 'localhost'.
+const getRPID = (req) => {
+    const host = (req.headers.host || 'localhost').split(':')[0];
+    const isIPv4 = /^(\d{1,3}\.){3}\d{1,3}$/.test(host);
+    return isIPv4 ? 'localhost' : host;   // .local / real domain → use as-is
+};
 
 // GET /generate-registration-options
 exports.generateRegOptions = async (req, res) => {
@@ -89,7 +98,7 @@ exports.generateRegOptions = async (req, res) => {
 
         const options = await generateRegistrationOptions({
             rpName,
-            rpID,
+            rpID: getRPID(req),
             userID: new Uint8Array(Buffer.from(user.email)),
             userName: user.email,
             excludeCredentials: userPasskeys,
@@ -115,15 +124,19 @@ exports.verifyRegResponse = async (req, res) => {
     try {
         const user = await User.findById(req.user.userId);
         const expectedChallenge = user.currentChallenge;
-        const expectedOrigin = req.headers.origin;
+        const actualOrigin = req.headers.origin;
+        // Accept both the real IP origin and localhost (for WebAuthn rpID compatibility)
+        const expectedOrigins = actualOrigin
+            ? [actualOrigin, actualOrigin.replace(/\/\/[^:]+/, '//localhost')]
+            : ['https://localhost:5173', 'http://localhost:5173'];
 
         let verification;
         try {
             verification = await verifyRegistrationResponse({
                 response: req.body,
                 expectedChallenge,
-                expectedOrigin,
-                expectedRPID: rpID,
+                expectedOrigin: expectedOrigins,
+                expectedRPID: getRPID(req),
             });
         } catch (error) {
             console.error("VerifyReg error 1:", error);
@@ -158,14 +171,15 @@ exports.verifyRegResponse = async (req, res) => {
 // POST /generate-authentication-options
 exports.generateAuthOptions = async (req, res) => {
     try {
-        const { email } = req.body;
+        let { email } = req.body;
+        if (email) email = email.trim().toLowerCase();
         const user = await User.findOne({email});
         if(!user) return res.status(404).json({error: "User not found"});
 
         const validPasskeys = user.passkeys.filter(k => k.credentialID);
 
         const options = await generateAuthenticationOptions({
-            rpID,
+            rpID: getRPID(req),
             allowCredentials: validPasskeys.map(key => ({
                 id: key.credentialID,
                 type: 'public-key',
@@ -197,7 +211,11 @@ exports.verifyAuthResponse = async (req, res) => {
         }
 
         const expectedChallenge = user.currentChallenge;
-        const expectedOrigin = req.headers.origin;
+        const actualOrigin = req.headers.origin;
+        // Accept both the real IP origin and localhost (for WebAuthn rpID compatibility)
+        const expectedOrigins = actualOrigin
+            ? [actualOrigin, actualOrigin.replace(/\/\/[^:]+/, '//localhost')]
+            : ['https://localhost:5173', 'http://localhost:5173'];
 
         const passkey = user.passkeys.find(k => k.credentialID === body.id);
         if(!passkey) return res.status(400).json({error: "Unregistered credential"});
@@ -207,8 +225,8 @@ exports.verifyAuthResponse = async (req, res) => {
             verification = await verifyAuthenticationResponse({
                 response: body,
                 expectedChallenge,
-                expectedOrigin,
-                expectedRPID: rpID,
+                expectedOrigin: expectedOrigins,
+                expectedRPID: getRPID(req),
                 credential: {
                     id: passkey.credentialID,
                     publicKey: new Uint8Array(passkey.credentialPublicKey),

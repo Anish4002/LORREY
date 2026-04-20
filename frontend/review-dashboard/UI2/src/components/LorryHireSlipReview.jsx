@@ -382,13 +382,13 @@ const LorryHireSlipReview = ({ invoiceId, onBack, formData: propFormData, onOpen
                                 <InfoRow label="Invoice No." value={gcnData?.invoice_no} mono />
                             </SectionCard>
                             <Grid container spacing={2}>
-                                <Grid item xs={6}>
+                                <Grid item xs={12} sm={6}>
                                     <SectionCard icon={<PersonIcon />} title="Consignor (From)" color="#0b8043">
                                         <InfoRow label="Name" value={gcnData?.consignor_name} />
                                         <InfoRow label="Destination" value={gcnData?.destination} />
                                     </SectionCard>
                                 </Grid>
-                                <Grid item xs={6}>
+                                <Grid item xs={12} sm={6}>
                                     <SectionCard icon={<PersonIcon />} title="Consignee (To)" color="#c62828">
                                         <InfoRow label="Name" value={gcnData?.consignee_name} />
                                         <InfoRow label="Pincode" value={gcnData?.consignee_pincode} mono />
@@ -509,25 +509,27 @@ const LorryHireSlipReview = ({ invoiceId, onBack, formData: propFormData, onOpen
                     zIndex: 1100,
                     backgroundColor: '#fff',
                     borderBottom: '1px solid #ddd',
-                    px: 3,
+                    px: { xs: 1.5, sm: 3 },
                     py: 1.5,
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+                    flexDirection: { xs: 'column', md: 'row' },
+                    gap: { xs: 1.5, md: 0 }
                 }}
                 className="no-print"
             >
-                <Box display="flex" gap={2} alignItems="center">
+                <Box display="flex" gap={1.5} alignItems="center" sx={{ width: { xs: '100%', md: 'auto' } }}>
                     <IconButton onClick={() => setStep(0)} size="small" sx={{ bgcolor: '#f0f6ff', '&:hover': { bgcolor: '#d0e4ff' } }}>
                         <ArrowBackIcon fontSize="small" />
                     </IconButton>
-                    <Box>
-                        <Typography variant="h6" fontWeight="900" color="primary" sx={{ lineHeight: 1.2 }}>
-                            Lorry Hire Slip — Final Document
+                    <Box sx={{ flex: 1 }}>
+                        <Typography variant="subtitle1" fontWeight="900" color="primary" sx={{ lineHeight: 1.2, fontSize: { xs: '0.9rem', sm: '1.25rem' } }}>
+                            Lorry Hire Slip — Final
                         </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                            Slip No. {slipNo} · Fuel Slip No. {fuelSlipNo}
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '10px' }}>
+                            #{slipNo} · Fuel #{fuelSlipNo}
                         </Typography>
                     </Box>
-                    <Stepper activeStep={step} alternativeLabel sx={{ minWidth: 280, display: { xs: 'none', lg: 'flex' }, ml: 2 }}>
+                    <Stepper activeStep={step} alternativeLabel sx={{ minWidth: 200, display: { xs: 'none', lg: 'flex' }, ml: 2 }}>
                         {STEPS.map(label => (
                             <Step key={label}><StepLabel>{label}</StepLabel></Step>
                         ))}
@@ -535,19 +537,20 @@ const LorryHireSlipReview = ({ invoiceId, onBack, formData: propFormData, onOpen
                 </Box>
 
                 <Box display="flex" sx={{
-                    flexDirection: { xs: 'column', sm: 'row' },
-                    gap: 2,
-                    alignItems: { xs: 'stretch', sm: 'center' }
+                    flexDirection: 'row',
+                    gap: 1,
+                    width: { xs: '100%', md: 'auto' },
+                    justifyContent: 'space-between'
                 }}>
-                    <Box display="flex" gap={1.5} sx={{ justifyContent: { xs: 'center', sm: 'flex-end' } }}>
-                        <Button variant="outlined" size="small" startIcon={<PrintIcon />} onClick={() => window.print()} sx={{ borderRadius: 2, px: 2, flex: { xs: 1, sm: 'none' } }}>
+                    <Box display="flex" gap={1} sx={{ flex: 1 }}>
+                        <Button variant="outlined" size="small" startIcon={<PrintIcon />} onClick={() => window.print()} sx={{ borderRadius: 2, flex: 1, fontSize: '11px' }}>
                             Print
                         </Button>
-                        <Button variant="contained" size="small" startIcon={<DownloadIcon />} onClick={handleDownload} sx={{ borderRadius: 2, px: 2, background: 'linear-gradient(45deg, #1a73e8, #4285f4)', flex: { xs: 1, sm: 'none' } }}>
+                        <Button variant="contained" size="small" startIcon={<DownloadIcon />} onClick={handleDownload} sx={{ borderRadius: 2, flex: 1, fontSize: '11px', background: 'linear-gradient(45deg, #1a73e8, #4285f4)' }}>
                             PDF
                         </Button>
                     </Box>
-                    <Box display="flex" gap={1.5} sx={{ justifyContent: { xs: 'center', sm: 'flex-end' } }}>
+                    <Box display="flex" gap={1} sx={{ flex: 1 }}>
                         {savedUrl && onOpenFuelSlip && (
                             <Button
                                 variant="contained"
@@ -558,18 +561,17 @@ const LorryHireSlipReview = ({ invoiceId, onBack, formData: propFormData, onOpen
                                 sx={{
                                     borderRadius: 2,
                                     fontWeight: 700,
-                                    flex: { xs: 1, sm: 'none' },
-                                    background: 'linear-gradient(45deg, #7b1fa2, #9c27b0)',
-                                    boxShadow: '0 4px 12px rgba(123,31,162,0.3)',
-                                    '&:hover': { background: 'linear-gradient(45deg, #6a1b9a, #7b1fa2)' }
+                                    flex: 1,
+                                    fontSize: '11px',
+                                    background: '#7c3aed',
+                                    boxShadow: '0 4px 12px rgba(124, 58, 237, 0.3)',
+                                    '&:hover': { background: '#6d28d9' }
                                 }}
                             >
                                 Fuel Slip
                             </Button>
                         )}
-                        <Button variant="contained" size="small" startIcon={<DescriptionIcon />} onClick={() => window.location.href = '/'} sx={{ borderRadius: 2, px: 2, bgcolor: '#333', '&:hover': { bgcolor: '#000' }, flex: { xs: 1, sm: 'none' } }}>
-                            Dashboard
-                        </Button>
+                        <Button variant="outlined" size="small" onClick={() => window.location.href = '/'} sx={{ borderRadius: '12px', fontWeight: 700, color: '#64748b', borderColor: '#e2e8f0', flex: { xs: 'none', sm: 'none' }, minWidth: '40px' }}>Home</Button>
                     </Box>
                 </Box>
             </Box>

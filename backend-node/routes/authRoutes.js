@@ -44,4 +44,3 @@ router.put("/pump-config", authMiddleware, async (req, res) => {
 });
 
 module.exports = router;
-

@@ -2,6 +2,8 @@ import React, { createContext, useState, useContext, useEffect } from 'react';
 import axios from 'axios';
 import { API_URL } from '../config';
 
+import { startRegistration, startAuthentication } from '@simplewebauthn/browser';
+
 const AuthContext = createContext();
 
 export const useAuth = () => useContext(AuthContext);
@@ -54,6 +56,51 @@ export const AuthProvider = ({ children }) => {
         return loggedInUser;
     };
 
+    const registerPasskey = async () => {
+        try {
+            // 1. Get options from server
+            const { data: options } = await axios.get(`${API_URL}/auth/generate-registration-options`);
+            
+            // 2. Trigger browser registration ceremony
+            const regResponse = await startRegistration({ optionsJSON: options });
+            
+            // 3. Verify with server
+            const { data: verification } = await axios.post(`${API_URL}/auth/verify-registration`, regResponse);
+            
+            if (!verification.verified) throw new Error('Verification failed');
+            return true;
+        } catch (err) {
+            console.error('Passkey registration failed:', err);
+            throw err;
+        }
+    };
+
+    const loginWithPasskey = async (email, role) => {
+        try {
+            // 1. Get auth options from server
+            const { data: options } = await axios.post(`${API_URL}/auth/generate-authentication-options`, { email });
+            
+            // 2. Trigger browser authentication ceremony
+            const authResponse = await startAuthentication({ optionsJSON: options });
+            
+            // 3. Verify with server
+            const { data: response } = await axios.post(`${API_URL}/auth/verify-authentication`, {
+                email,
+                body: authResponse,
+                role
+            });
+
+            if (response.verified && response.token) {
+                loginWithToken(response.token, response.user);
+                return response.user;
+            }
+            throw new Error('Authentication failed');
+        } catch (err) {
+            console.error('Passkey login failed:', err);
+            throw err;
+        }
+    };
+
     const logout = () => {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
@@ -62,7 +109,10 @@ export const AuthProvider = ({ children }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ user, signup, login, loginWithToken, logout, loading }}>
+        <AuthContext.Provider value={{ 
+            user, signup, login, loginWithToken, logout, loading,
+            registerPasskey, loginWithPasskey 
+        }}>
             {children}
         </AuthContext.Provider>
     );

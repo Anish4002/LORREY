@@ -119,6 +119,8 @@ export default function PumpPaymentDetails({ onBack, lockedPump = null }) {
   const [pumpConfig, setPumpConfig] = useState({ pumpName: null, fuelRate: 90 });
   // Map of specific fuel prices for all pumps
   const [fuelRatesMap, setFuelRatesMap] = useState({});
+  // partitioning for pump admin
+  const [pumpTab, setPumpTab] = useState('today'); // 'today' or 'expired'
 
   const yearOptions = [];
   for (let y = now.getFullYear() - 2; y <= now.getFullYear() + 1; y++) yearOptions.push(y);
@@ -465,12 +467,11 @@ export default function PumpPaymentDetails({ onBack, lockedPump = null }) {
       setSnack({ severity: 'error', msg: 'Verification failed: ' + (err.response?.data?.error || err.message) });
     }
   };
-
   // ── Apply calcs + local edits to produce final display rows ───────────
   const computedRows = useMemo(() => {
     return rows.map((row, ri) => {
       const edits = localEdits[ri] || {};
-      const merged = { ...row, ...edits };
+      const merged = { ...row, ...edits, originalIndex: ri };
       // HSD AMOUNT = HSD (LTR) × HSD RATE
       const ltr = num(merged['HSD (LTR)']);
       const rate = num(merged['HSD RATE']);
@@ -478,11 +479,27 @@ export default function PumpPaymentDetails({ onBack, lockedPump = null }) {
       return merged;
     });
   }, [rows, localEdits]);
+  
+  // Partition for Pump Admin
+  const { todayRows, expiredRows } = useMemo(() => {
+    if (!isPumpAdmin) return { todayRows: [], expiredRows: [] };
+    const today = new Date();
+    const todayStr = `${String(today.getDate()).padStart(2, '0')}-${String(today.getMonth() + 1).padStart(2, '0')}-${today.getFullYear()}`;
+    
+    return {
+      todayRows: computedRows.filter(r => r['LOADING DATE'] === todayStr),
+      expiredRows: computedRows.filter(r => r['LOADING DATE'] !== todayStr)
+    };
+  }, [computedRows, isPumpAdmin]);
+
+  const activeRows = isPumpAdmin 
+    ? (pumpTab === 'today' ? todayRows : expiredRows)
+    : computedRows;
 
   const totals = useMemo(() => ({
-    'HSD (LTR)': round2(computedRows.reduce((s, r) => s + num(r['HSD (LTR)']), 0)),
-    'HSD AMOUNT': round2(computedRows.reduce((s, r) => s + num(r['HSD AMOUNT']), 0)),
-  }), [computedRows]);
+    'HSD (LTR)': round2(activeRows.reduce((s, r) => s + num(r['HSD (LTR)']), 0)),
+    'HSD AMOUNT': round2(activeRows.reduce((s, r) => s + num(r['HSD AMOUNT']), 0)),
+  }), [activeRows]);
 
   const handleEdit = (ri, field, value) => {
     setLocalEdits(prev => ({ ...prev, [ri]: { ...(prev[ri] || {}), [field]: value } }));
@@ -686,7 +703,7 @@ export default function PumpPaymentDetails({ onBack, lockedPump = null }) {
           </FormControl>
 
           {isOfficeAdmin && dirtyCount > 0 && <Chip label="Unsaved changes" size="small" color="warning" sx={{ fontWeight: 700 }} />}
-          <Chip label={`${computedRows.length} entries`} size="small" sx={{ bgcolor: '#e0f7fa', fontWeight: 700, color: '#0891b2' }} />
+          <Chip label={`${activeRows.length} entries`} size="small" sx={{ bgcolor: '#e0f7fa', fontWeight: 700, color: '#0891b2' }} />
 
           <Box sx={{ ml: 'auto', display: 'flex', gap: 1 }}>
             <Tooltip title="Reload from cement register">
@@ -729,6 +746,38 @@ export default function PumpPaymentDetails({ onBack, lockedPump = null }) {
           )}
         </Box>
       </Box>
+      
+      {/* ── Pump Admin Tabs ── */}
+      {isPumpAdmin && (
+        <Box sx={{ px: 2, py: 1.5, bgcolor: '#fff', borderBottom: '1px solid #e2e8f0', display: 'flex', gap: 2 }}>
+          <Button
+            onClick={() => setPumpTab('today')}
+            variant={pumpTab === 'today' ? 'contained' : 'outlined'}
+            sx={{
+              borderRadius: '20px', px: 3, fontWeight: 800, fontSize: 13,
+              bgcolor: pumpTab === 'today' ? '#0891b2' : 'transparent',
+              color: pumpTab === 'today' ? '#fff' : '#0891b2',
+              borderColor: '#0891b2',
+              '&:hover': { bgcolor: pumpTab === 'today' ? '#0e7490' : '#f0fdfa' }
+            }}
+          >
+            Today ({todayRows.length})
+          </Button>
+          <Button
+            onClick={() => setPumpTab('expired')}
+            variant={pumpTab === 'expired' ? 'contained' : 'outlined'}
+            sx={{
+              borderRadius: '20px', px: 3, fontWeight: 800, fontSize: 13,
+              bgcolor: pumpTab === 'expired' ? '#ef4444' : 'transparent',
+              color: pumpTab === 'expired' ? '#fff' : '#ef4444',
+              borderColor: '#ef4444',
+              '&:hover': { bgcolor: pumpTab === 'expired' ? '#dc2626' : '#fef2f2' }
+            }}
+          >
+            Expired ({expiredRows.length})
+          </Button>
+        </Box>
+      )}
 
       {/* ── Global Notifications Panel (Office Admin only) ── */}
       {isOfficeAdmin && allNotifications.length > 0 && (
@@ -815,21 +864,24 @@ export default function PumpPaymentDetails({ onBack, lockedPump = null }) {
             </thead>
 
             <tbody>
-              {computedRows.length === 0 && (
+              {activeRows.length === 0 && (
                 <tr><td colSpan={visibleCols.length + 1} style={{ textAlign: 'center', padding: 40, color: '#64748b' }}>
-                  No cement register entries found for <strong>{selPump}</strong> in {MONTH_NAMES[selMonth - 1]} {selYear} — {PERIODS.find(p => p.value === selPeriod)?.label || 'selected period'}.
+                  {isPumpAdmin 
+                    ? (pumpTab === 'today' ? "No vehicles pending for today." : "No expired pending vehicles.")
+                    : `No cement register entries found for ${selPump} in ${MONTH_NAMES[selMonth - 1]} ${selYear} — ${PERIODS.find(p => p.value === selPeriod)?.label || 'selected period'}.`}
                   <br />Check that pump name matches exactly or verify entries exist in the cement register.
                 </td></tr>
               )}
-              {computedRows.map((row, ri) => {
+              {activeRows.map((row, i) => {
+                const ri = row.originalIndex;
                 const hasEdits = !!localEdits[ri];
                 return (
-                  <tr key={ri} style={{ background: ri % 2 === 0 ? '#f0fdfa' : '#fff' }}>
+                  <tr key={i} style={{ background: i % 2 === 0 ? '#f0fdfa' : '#fff' }}>
                     <td style={{
                       textAlign: 'center', border: '1px solid #e2e8f0', fontWeight: 700,
                       color: '#475569', padding: isPumpAdmin ? '16px 6px' : '4px', background: '#e0f7fa'
                     }}>
-                      {ri + 1}
+                      {i + 1}
                     </td>
                     {visibleCols.map(col => {
                       const val = row[col.key];
@@ -922,7 +974,7 @@ export default function PumpPaymentDetails({ onBack, lockedPump = null }) {
             </tbody>
 
             {/* ── Totals row ── */}
-            {computedRows.length > 0 && !isPumpAdmin && (
+            {activeRows.length > 0 && !isPumpAdmin && (
               <tfoot>
                 <tr style={{ background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f7fa 100%)', position: 'sticky', bottom: 0, boxShadow: '0 -2px 10px rgba(8,145,178,0.12)' }}>
                   {/* TOTAL label spans: SL No + Loading Date + Vehicle No + Pump Name + HSD Slip No + HSD Bill No = 6 cols */}
@@ -942,8 +994,6 @@ export default function PumpPaymentDetails({ onBack, lockedPump = null }) {
                     {totals['HSD (LTR)']} Ltr
                   </td>
                   {/* VERIFICATION STATUS col — empty */}
-                  <td style={{ border: '1px solid #94a3b8', borderTop: '2px solid #0891b2' }} />
-                  {/* VERIFICATION CODE col — empty */}
                   <td style={{ border: '1px solid #94a3b8', borderTop: '2px solid #0891b2' }} />
                   {/* HSD RATE col — empty */}
                   <td style={{ border: '1px solid #94a3b8', borderTop: '2px solid #0891b2' }} />

@@ -7,7 +7,7 @@ import {
 import axios from 'axios';
 import html2pdf from 'html2pdf.js';
 import { API_URL } from '../config';
-import { toWords } from 'number-to-words';
+import { toIndianWords } from '../utils/toIndianWords';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import SaveIcon from '@mui/icons-material/Save';
 import DashboardIcon from '@mui/icons-material/Dashboard';
@@ -84,10 +84,7 @@ const FuelSlipReview = ({ invoiceId, onBack, onOpenVoucher }) => {
     };
 
     const getAmountWords = (amt) => {
-        try {
-            if (amt > 0) return toWords(Math.floor(amt)).toUpperCase() + ' RUPEES ONLY';
-        } catch (e) { return ''; }
-        return '';
+        return toIndianWords(amt);
     };
 
     const hsdSlipNo = invoiceData?.lorry_hire_slip_data?.fuel_slip_no || 'AUTO-GEN';

@@ -36,6 +36,7 @@ import { API_URL } from "../config";
 const SOCKET_URL = import.meta.env.VITE_SOCKET_IO_URL || API_URL;
 const socket = io(SOCKET_URL, { autoConnect: true });
 
+import { toIndianWords } from "../utils/toIndianWords";
 import InvoiceDetails from "./InvoiceDetails";
 import SellerDetails from "./SellerDetails";
 import BuyerDetails from "./BuyerDetails";
@@ -121,6 +122,23 @@ export default function InvoiceForm({ onBack }) {
          }
      }
   }, [formData?.supply_details?.destination_state, formData?.items]);
+  
+  // Auto-calculate Amount in Words when Net Payable changes
+  useEffect(() => {
+    const netPayableStr = formData?.amount_summary?.net_payable;
+    if (netPayableStr) {
+      const amt = parseFloat(netPayableStr);
+      if (!isNaN(amt)) {
+        const words = toIndianWords(amt);
+        if (formData.amount_summary?.amount_in_words !== words) {
+          setFormData(prev => ({
+            ...prev,
+            amount_summary: { ...prev?.amount_summary, amount_in_words: words }
+          }));
+        }
+      }
+    }
+  }, [formData?.amount_summary?.net_payable]);
 
   // Refs for unified print/download
   const taxInvoiceRef = useRef(null);

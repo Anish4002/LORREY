@@ -4,6 +4,7 @@ const router = express.Router();
 const AccountDetail = require('../models/AccountDetail');
 const { getIO } = require('../socket');
 const { parseBankStatement } = require('../utils/parseBankStatement');
+const remittanceUpload = require('../middleware/remittanceUpload');
 
 // In-memory multer for bank statement uploads (max 10MB)
 const statementUpload = multer({
@@ -31,7 +32,9 @@ const keyMap = {
   'Cheque No': 'chequeNo',
   'Withdraw': 'withdraw',
   'Deposit': 'deposit',
-  'Closing Balance': 'closingBalance'
+  'Closing Balance': 'closingBalance',
+  'remittanceFileUrl': 'remittanceFileUrl',
+  'remittanceFileName': 'remittanceFileName'
 };
 const reverseMap = Object.fromEntries(Object.entries(keyMap).map(([k, v]) => [v, k]));
 
@@ -73,7 +76,7 @@ router.put('/bulk-update', async (req, res) => {
         await AccountDetail.findByIdAndUpdate(item.id, updateDoc);
       }
     }
-    
+
     try {
       const io = getIO();
       if (io) io.emit('accountDetailsUpdate', { action: 'bulk-update' });
@@ -94,7 +97,7 @@ router.delete('/bulk-delete', async (req, res) => {
     const { ids } = req.body;
     if (!Array.isArray(ids)) return res.status(400).json({ error: 'ids array required' });
     await AccountDetail.deleteMany({ _id: { $in: ids } });
-    
+
     try {
       const io = getIO();
       if (io) io.emit('accountDetailsUpdate', { action: 'bulk-delete' });
@@ -148,7 +151,7 @@ router.post('/upload-statement', statementUpload.single('statement'), async (req
 
     const { transactions, colMap } = parseBankStatement(req.file.buffer, req.file.originalname);
     req.file.debugColMap = colMap;
-    
+
     if (transactions.length === 0) {
       const debugInfo = req.file.debugColMap ? ` (MAPPED: ${JSON.stringify(req.file.debugColMap)})` : '';
       console.warn(`[StatementUpload] No transactions found in file: ${req.file.originalname}`);
@@ -157,7 +160,7 @@ router.post('/upload-statement', statementUpload.single('statement'), async (req
 
     console.log(`[StatementUpload] Found ${transactions.length} transactions for file: ${req.file.originalname}`);
     await AccountDetail.insertMany(transactions);
-    
+
     try {
       const io = getIO();
       if (io) io.emit('accountDetailsUpdate', { action: 'bank-statement-upload' });
@@ -168,6 +171,30 @@ router.post('/upload-statement', statementUpload.single('statement'), async (req
     res.json({ success: true, count: transactions.length, fromDate, toDate });
   } catch (error) {
     console.error('Upload Statement Error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// UPLOAD REMITTANCE FOR SPECIFIC ROW
+router.post('/upload-remittance/:id', remittanceUpload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, error: 'No file uploaded.' });
+
+    const doc = await AccountDetail.findById(req.params.id);
+    if (!doc) return res.status(404).json({ success: false, error: 'Record not found.' });
+
+    doc.remittanceFileUrl = req.file.location;
+    doc.remittanceFileName = req.file.originalname;
+    await doc.save();
+
+    try {
+      const io = getIO();
+      if (io) io.emit('accountDetailsUpdate', { action: 'remittance-upload' });
+    } catch (_) {}
+
+    res.json({ success: true, url: doc.remittanceFileUrl, filename: doc.remittanceFileName });
+  } catch (error) {
+    console.error('Row Remittance Upload Error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -187,9 +214,9 @@ router.post('/clear-main-cash', async (req, res) => {
     const y = parseInt(yyyy, 10);
     const dateVariants = [
       `${d}-${m}-${y}`,
-      `${String(d).padStart(2,'0')}-${m}-${y}`,
-      `${d}-${String(m).padStart(2,'0')}-${y}`,
-      `${String(d).padStart(2,'0')}-${String(m).padStart(2,'0')}-${y}`,
+      `${String(d).padStart(2, '0')}-${m}-${y}`,
+      `${d}-${String(m).padStart(2, '0')}-${y}`,
+      `${String(d).padStart(2, '0')}-${String(m).padStart(2, '0')}-${y}`,
     ];
 
     const mongoose = require('mongoose');
@@ -245,9 +272,9 @@ router.post('/sync-main-cash', async (req, res) => {
     // Build all variant strings the cashbook might store
     const dateVariants = [
       `${d}-${m}-${y}`,
-      `${String(d).padStart(2,'0')}-${m}-${y}`,
-      `${d}-${String(m).padStart(2,'0')}-${y}`,
-      `${String(d).padStart(2,'0')}-${String(m).padStart(2,'0')}-${y}`,
+      `${String(d).padStart(2, '0')}-${m}-${y}`,
+      `${d}-${String(m).padStart(2, '0')}-${y}`,
+      `${String(d).padStart(2, '0')}-${String(m).padStart(2, '0')}-${y}`,
     ];
 
     const mongoose = require('mongoose');

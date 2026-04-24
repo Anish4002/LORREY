@@ -1,8 +1,8 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   Box, Button, CircularProgress, Typography, IconButton,
   Snackbar, Alert, Chip, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions,
-  Autocomplete, TextField
+  Autocomplete, TextField, Divider
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import SaveIcon from '@mui/icons-material/Save';
@@ -15,21 +15,21 @@ import axios from 'axios';
 import { io } from 'socket.io-client';
 import { exportToCsv } from '../utils/exportCsv';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-const SOCKET_URL = import.meta.env.VITE_SOCKET_IO_URL || API_URL;
+const API_URL = import.meta.env.VITE_API_URL || '/api';
+const SOCKET_URL = import.meta.env.VITE_SOCKET_IO_URL || '/';
 
 // Columns configuration
 export const COLUMNS = [
   { key: 'Transaction Date', label: 'TRANSACTION\nDATE', width: 140, isDate: true },
-  { key: 'Ledger Name',      label: 'LEDGER\nNAME',        width: 180 },
-  { key: 'Names',            label: 'NAMES',               width: 160 },
-  { key: 'Particulars',      label: 'PARTICULARS',         width: 220 },
-  { key: 'Remarks',          label: 'REMARKS',            width: 200 },
-  { key: 'Reference No',     label: 'REFERENCE\nNO',       width: 140 },
-  { key: 'Cheque No',        label: 'CHEQUE\nNO',          width: 140 },
-  { key: 'Withdraw',         label: 'WITHDRAW',            width: 130 },
-  { key: 'Deposit',          label: 'DEPOSIT',             width: 130 },
-  { key: 'Closing Balance',  label: 'CLOSING\nBALANCE',    width: 140 },
+  { key: 'Ledger Name', label: 'LEDGER\nNAME', width: 180 },
+  { key: 'Names', label: 'NAMES', width: 160 },
+  { key: 'Particulars', label: 'PARTICULARS', width: 220 },
+  { key: 'Remarks', label: 'REMARKS', width: 200 },
+  { key: 'Reference No', label: 'REFERENCE\nNO', width: 140 },
+  { key: 'Cheque No', label: 'CHEQUE\nNO', width: 140 },
+  { key: 'Withdraw', label: 'WITHDRAW', width: 130 },
+  { key: 'Deposit', label: 'DEPOSIT', width: 130 },
+  { key: 'Closing Balance', label: 'CLOSING\nBALANCE', width: 140 },
 ];
 
 const LEDGER_OPTIONS = [
@@ -73,6 +73,13 @@ export default function AccountDetails({ onBack }) {
   const [deleting, setDeleting] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const [bankUploadPreview, setBankUploadPreview] = useState(null);
+  const [bankDateDialog, setBankDateDialog] = useState(false);
+  const [bankFromDate, setBankFromDate] = useState('');
+  const [bankToDate, setBankToDate] = useState('');
+  const [uploadedDates, setUploadedDates] = useState([]);
+  const fileInputRef = useRef(null);
+  const [filterFrom, setFilterFrom] = useState('');
+  const [filterTo, setFilterTo] = useState('');
 
   const dirtyCount = Object.keys(localData).length;
   const allSelected = entries.length > 0 && selectedIds.size === entries.length;
@@ -117,13 +124,40 @@ export default function AccountDetails({ onBack }) {
     }
   }, []);
 
+  // Fetch already-uploaded date ranges so we can warn the user
+  const fetchUploadedDates = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await axios.get(`${API_URL}/account-details/uploaded-date-ranges`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.data.success) setUploadedDates(res.data.uploadedDates || []);
+    } catch (e) {
+      // non-critical
+    }
+  }, []);
+
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+    fetchUploadedDates();
+  }, [fetchData, fetchUploadedDates]);
 
   const computedRows = useMemo(() =>
     entries.map(row => ({ ...row, ...(localData[row._id] || {}) })),
     [entries, localData]);
+
+  // Date-range filtered view (client-side, no refetch needed)
+  const filteredRows = useMemo(() => {
+    if (!filterFrom && !filterTo) return computedRows;
+    return computedRows.filter(row => {
+      const d = row['Transaction Date'] || '';
+      if (filterFrom && d < filterFrom) return false;
+      if (filterTo && d > filterTo) return false;
+      return true;
+    });
+  }, [computedRows, filterFrom, filterTo]);
+
+  const isFiltered = !!(filterFrom || filterTo);
 
   const handleCellEdit = useCallback((rowId, field, value) => {
     setLocalData(prev => ({ ...prev, [rowId]: { ...(prev[rowId] || {}), [field]: value } }));
@@ -170,7 +204,60 @@ export default function AccountDetails({ onBack }) {
       await axios.put(`${API_URL}/account-details/bulk-update`, { updates }, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setSnack({ severity: 'success', msg: 'Saved successfully!' });
+
+      // ── Sync / Clear "Main Cash" rows ↔ Main Cashbook ─────────────────
+      const syncErrors = [];
+      for (const [rowId, changes] of Object.entries(localData)) {
+        const newLedger = changes['Ledger Name'];
+        const originalEntry = entries.find(e => e._id === rowId);
+        const oldLedger = originalEntry?.['Ledger Name'] || '';
+
+        // Resolve date from changes or original entry
+        const transactionDate =
+          changes['Transaction Date'] ??
+          originalEntry?.['Transaction Date'] ??
+          originalEntry?.transactionDate ?? '';
+
+        if (!transactionDate) continue;
+
+        const newIsMainCash = typeof newLedger === 'string' && newLedger.toLowerCase() === 'main cash';
+        const oldWasMainCash = typeof oldLedger === 'string' && oldLedger.toLowerCase() === 'main cash';
+
+        if (newIsMainCash) {
+          // ── ADDED or KEPT "Main Cash" → sync withdraw to cashbook ──────
+          const withdraw =
+            changes['Withdraw'] !== undefined
+              ? changes['Withdraw']
+              : (originalEntry?.['Withdraw'] || originalEntry?.withdraw || '');
+
+          if (!withdraw || parseFloat(withdraw) <= 0) continue;
+
+          try {
+            await axios.post(`${API_URL}/account-details/sync-main-cash`, {
+              transactionDate,
+              withdrawAmount: parseFloat(withdraw)
+            }, { headers: { Authorization: `Bearer ${token}` } });
+          } catch (syncErr) {
+            syncErrors.push(syncErr.response?.data?.error || `Sync failed for ${transactionDate}: ${syncErr.message}`);
+          }
+
+        } else if (oldWasMainCash && newLedger !== undefined && !newIsMainCash) {
+          // ── REMOVED "Main Cash" → clear cashbook fields ─────────────────
+          try {
+            await axios.post(`${API_URL}/account-details/clear-main-cash`, {
+              transactionDate
+            }, { headers: { Authorization: `Bearer ${token}` } });
+          } catch (clearErr) {
+            syncErrors.push(clearErr.response?.data?.error || `Clear failed for ${transactionDate}: ${clearErr.message}`);
+          }
+        }
+      }
+
+      if (syncErrors.length > 0) {
+        setSnack({ severity: 'warning', msg: `Saved ✓ — Cashbook sync issue: ${syncErrors[0]}` });
+      } else {
+        setSnack({ severity: 'success', msg: 'Saved! Main Cashbook updated.' });
+      }
       fetchData();
     } catch (err) {
       setSnack({ severity: 'error', msg: 'Save failed: ' + (err.response?.data?.error || err.message) });
@@ -181,6 +268,28 @@ export default function AccountDetails({ onBack }) {
 
   const handleExport = () => exportToCsv('account_details.xls', computedRows);
 
+  // Step 1: open the date dialog
+  const handleUploadBankStatementClick = () => {
+    setBankFromDate('');
+    setBankToDate('');
+    setBankDateDialog(true);
+  };
+
+  // Step 2: user confirmed dates → open file picker
+  const handleDateConfirmed = () => {
+    if (!bankFromDate || !bankToDate) {
+      setSnack({ severity: 'warning', msg: 'Please select both From and To dates.' });
+      return;
+    }
+    if (bankFromDate > bankToDate) {
+      setSnack({ severity: 'warning', msg: '"From" date must be before or equal to "To" date.' });
+      return;
+    }
+    setBankDateDialog(false);
+    setTimeout(() => fileInputRef.current?.click(), 100);
+  };
+
+  // Step 3: file selected → upload with date range
   const handleBankStatementUpload = async (e) => {
     const file = e.target.files[0];
     e.target.value = '';
@@ -190,12 +299,15 @@ export default function AccountDetails({ onBack }) {
       const token = localStorage.getItem('token');
       const formData = new FormData();
       formData.append('statement', file);
+      formData.append('fromDate', bankFromDate);
+      formData.append('toDate', bankToDate);
       const res = await axios.post(`${API_URL}/account-details/upload-statement`, formData, {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' }
       });
       if (res.data.success) {
-        setBankUploadPreview({ count: res.data.count, filename: file.name });
+        setBankUploadPreview({ count: res.data.count, filename: file.name, fromDate: bankFromDate, toDate: bankToDate });
         fetchData();
+        fetchUploadedDates();
       }
     } catch (err) {
       setSnack({ severity: 'error', msg: 'Upload failed: ' + (err.response?.data?.error || err.message) });
@@ -244,17 +356,19 @@ export default function AccountDetails({ onBack }) {
 
         <Box sx={{ ml: 'auto', display: 'flex', gap: 1, alignItems: 'center' }}>
           <Button
-            size="small" component="label" variant="contained"
+            size="small" variant="contained"
             startIcon={uploading ? <CircularProgress size={13} color="inherit" /> : <AccountBalanceIcon />}
             disabled={uploading}
+            onClick={handleUploadBankStatementClick}
             sx={{
               fontWeight: 800, borderRadius: 2, px: 2, fontSize: '12px',
               background: 'linear-gradient(135deg, #0891b2, #0e7490)',
               '&:hover': { background: 'linear-gradient(135deg, #0e7490, #155e75)' }
             }}>
             {uploading ? 'Parsing...' : 'Upload Bank Statement'}
-            <input type="file" accept=".xlsx,.xls,.csv" hidden onChange={handleBankStatementUpload} />
           </Button>
+          {/* Hidden file input — triggered after date selection */}
+          <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={handleBankStatementUpload} />
 
           <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={handleAddRow}
             sx={{ fontWeight: 800, borderRadius: 2, px: 2, fontSize: '12px', bgcolor: '#0f766e', '&:hover': { bgcolor: '#115e59' } }}>
@@ -282,7 +396,8 @@ export default function AccountDetails({ onBack }) {
         </Box>
       </Box>
 
-      <Box sx={{ px: 2.5, py: 0.8, bgcolor: '#f0f9ff', borderBottom: '1px solid #bae6fd', display: 'flex', gap: 2, alignItems: 'center', flexShrink: 0 }}>
+      {/* ── Column Key Bar ── */}
+      <Box sx={{ px: 2.5, py: 0.7, bgcolor: '#f0f9ff', borderBottom: '1px solid #bae6fd', display: 'flex', gap: 2, alignItems: 'center', flexShrink: 0 }}>
         <Typography variant="caption" fontWeight={700} color="#0369a1">Column Key:</Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
           <Box sx={{ width: 10, height: 10, borderRadius: '2px', bgcolor: '#dcfce7', border: '1px solid #16a34a' }} />
@@ -292,6 +407,147 @@ export default function AccountDetails({ onBack }) {
           <Box sx={{ width: 10, height: 10, borderRadius: '2px', bgcolor: '#fff7ed', border: '1px solid #f97316' }} />
           <Typography variant="caption" color="#c2410c" fontWeight={600}>Manual (Ledger Name, Names, Particulars)</Typography>
         </Box>
+      </Box>
+
+      {/* ── Date Range Filter Bar ── */}
+      <Box sx={{
+        px: 3, py: 1.2, flexShrink: 0,
+        background: 'linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%)',
+        borderBottom: '2px solid #0ea5e9',
+        display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap',
+      }}>
+        {/* Icon + Label */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{
+            width: 30, height: 30, borderRadius: '8px',
+            background: 'linear-gradient(135deg, #0ea5e9, #0284c7)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 2px 8px rgba(14,165,233,0.4)'
+          }}>
+            <span style={{ fontSize: 15 }}>📅</span>
+          </Box>
+          <Box>
+            <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '12px', lineHeight: 1.1 }}>
+              Date Range Filter
+            </Typography>
+            <Typography sx={{ color: '#94a3b8', fontWeight: 500, fontSize: '10px', lineHeight: 1.1 }}>
+              Filter bank statements by date
+            </Typography>
+          </Box>
+        </Box>
+
+        {/* Separator */}
+        <Box sx={{ width: '1px', height: 32, bgcolor: 'rgba(255,255,255,0.15)' }} />
+
+        {/* From Date */}
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.4 }}>
+          <Typography sx={{ color: '#94a3b8', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            From Date
+          </Typography>
+          <input
+            type="date"
+            value={filterFrom}
+            onChange={e => setFilterFrom(e.target.value)}
+            style={{
+              padding: '7px 12px',
+              borderRadius: 8,
+              fontSize: '13px',
+              fontWeight: 700,
+              border: filterFrom ? '2px solid #0ea5e9' : '2px solid rgba(255,255,255,0.15)',
+              background: filterFrom ? 'rgba(14,165,233,0.18)' : 'rgba(255,255,255,0.07)',
+              color: filterFrom ? '#e0f2fe' : '#94a3b8',
+              outline: 'none',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              minWidth: 145,
+            }}
+            onFocus={e => { e.target.style.border = '2px solid #0ea5e9'; e.target.style.boxShadow = '0 0 0 3px rgba(14,165,233,0.2)'; }}
+            onBlur={e => { e.target.style.boxShadow = 'none'; }}
+          />
+        </Box>
+
+        {/* Arrow */}
+        <Box sx={{ display: 'flex', alignItems: 'flex-end', pb: 0.3 }}>
+          <Typography sx={{ color: '#475569', fontSize: '18px', fontWeight: 900, mt: '18px' }}>→</Typography>
+        </Box>
+
+        {/* To Date */}
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.4 }}>
+          <Typography sx={{ color: '#94a3b8', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            To Date
+          </Typography>
+          <input
+            type="date"
+            value={filterTo}
+            min={filterFrom || undefined}
+            onChange={e => setFilterTo(e.target.value)}
+            style={{
+              padding: '7px 12px',
+              borderRadius: 8,
+              fontSize: '13px',
+              fontWeight: 700,
+              border: filterTo ? '2px solid #0ea5e9' : '2px solid rgba(255,255,255,0.15)',
+              background: filterTo ? 'rgba(14,165,233,0.18)' : 'rgba(255,255,255,0.07)',
+              color: filterTo ? '#e0f2fe' : '#94a3b8',
+              outline: 'none',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              minWidth: 145,
+            }}
+            onFocus={e => { e.target.style.border = '2px solid #0ea5e9'; e.target.style.boxShadow = '0 0 0 3px rgba(14,165,233,0.2)'; }}
+            onBlur={e => { e.target.style.boxShadow = 'none'; }}
+          />
+        </Box>
+
+        {/* Result count + Clear — only when filter active */}
+        {isFiltered && (
+          <>
+            <Box sx={{ width: '1px', height: 32, bgcolor: 'rgba(255,255,255,0.15)', ml: 1 }} />
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, ml: 0.5 }}>
+              {/* Count badge */}
+              <Box sx={{
+                display: 'flex', alignItems: 'center', gap: 0.8,
+                px: 2, py: 0.8, borderRadius: 10,
+                background: 'linear-gradient(135deg, #0ea5e9, #0284c7)',
+                boxShadow: '0 2px 10px rgba(14,165,233,0.4)'
+              }}>
+                <Typography sx={{ color: '#fff', fontWeight: 900, fontSize: '13px' }}>
+                  {filteredRows.length}
+                </Typography>
+                <Typography sx={{ color: 'rgba(255,255,255,0.8)', fontWeight: 600, fontSize: '11px' }}>
+                  {filteredRows.length === 1 ? 'row found' : 'rows found'}
+                </Typography>
+              </Box>
+
+              {/* Clear button */}
+              <Button
+                size="small"
+                onClick={() => { setFilterFrom(''); setFilterTo(''); }}
+                sx={{
+                  fontWeight: 800, fontSize: '12px',
+                  color: '#fca5a5',
+                  border: '1.5px solid rgba(252,165,165,0.4)',
+                  borderRadius: '8px',
+                  px: 1.5, py: 0.5,
+                  textTransform: 'none',
+                  '&:hover': {
+                    bgcolor: 'rgba(239,68,68,0.15)',
+                    border: '1.5px solid #fca5a5',
+                  }
+                }}
+              >
+                ✕ Clear Filter
+              </Button>
+            </Box>
+          </>
+        )}
+
+        {/* Right side hint */}
+        {!isFiltered && (
+          <Typography sx={{ ml: 'auto', color: '#334155', fontSize: '11px', fontWeight: 600, fontStyle: 'italic' }}>
+            Showing all {computedRows.length} entries
+          </Typography>
+        )}
       </Box>
 
       <Box sx={{ overflow: 'auto', flex: 1 }}>
@@ -322,7 +578,14 @@ export default function AccountDetails({ onBack }) {
             </tr>
           </thead>
           <tbody>
-            {computedRows.map((row, ri) => (
+            {filteredRows.length === 0 && (
+              <tr>
+                <td colSpan={COLUMNS.length + 1} style={{ textAlign: 'center', padding: '40px', color: '#64748b', fontSize: '13px' }}>
+                  {isFiltered ? `No entries found between ${filterFrom || '…'} and ${filterTo || '…'}` : 'No entries.'}
+                </td>
+              </tr>
+            )}
+            {filteredRows.map((row, ri) => (
               <tr key={row._id} style={{ background: selectedIds.has(row._id) ? '#f0f9ff' : ri % 2 === 0 ? '#fff' : '#f8fafc' }}>
                 <td style={{ textAlign: 'center', border: '1px solid #e2e8f0' }}>
                   <input type="checkbox" checked={selectedIds.has(row._id)} onChange={() => toggleSelect(row._id)} />
@@ -422,6 +685,101 @@ export default function AccountDetails({ onBack }) {
         </table>
       </Box>
 
+      {/* ── Bank Statement Date Range Picker Dialog ── */}
+      <Dialog
+        open={bankDateDialog}
+        onClose={() => setBankDateDialog(false)}
+        maxWidth="sm" fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            background: 'linear-gradient(145deg, #0f172a, #1e293b)',
+            color: '#f8fafc',
+            boxShadow: '0 25px 50px rgba(0,0,0,0.5)',
+            border: '1px solid rgba(255,255,255,0.08)'
+          }
+        }}
+      >
+        <DialogTitle sx={{ fontWeight: 800, fontSize: '1.15rem', color: '#38bdf8', pb: 0, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <AccountBalanceIcon sx={{ fontSize: 22 }} /> Select Statement Date Range
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          <Typography variant="body2" sx={{ color: '#94a3b8', mb: 2.5, lineHeight: 1.6 }}>
+            Choose the date range covered by your bank statement. If a statement has already been uploaded for any date in this range, the upload will be blocked to prevent duplicates.
+          </Typography>
+
+          <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="caption" fontWeight={700} sx={{ color: '#7dd3fc', mb: 0.5, display: 'block' }}>From Date</Typography>
+              <input
+                type="date"
+                value={bankFromDate}
+                onChange={e => setBankFromDate(e.target.value)}
+                style={{
+                  width: '100%', padding: '10px 12px', borderRadius: 8,
+                  background: 'rgba(255,255,255,0.08)', border: '1.5px solid rgba(56,189,248,0.35)',
+                  color: '#f8fafc', fontSize: '14px', fontWeight: 600, outline: 'none',
+                  cursor: 'pointer', boxSizing: 'border-box'
+                }}
+              />
+            </Box>
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="caption" fontWeight={700} sx={{ color: '#7dd3fc', mb: 0.5, display: 'block' }}>To Date</Typography>
+              <input
+                type="date"
+                value={bankToDate}
+                min={bankFromDate || undefined}
+                onChange={e => setBankToDate(e.target.value)}
+                style={{
+                  width: '100%', padding: '10px 12px', borderRadius: 8,
+                  background: 'rgba(255,255,255,0.08)', border: '1.5px solid rgba(56,189,248,0.35)',
+                  color: '#f8fafc', fontSize: '14px', fontWeight: 600, outline: 'none',
+                  cursor: 'pointer', boxSizing: 'border-box'
+                }}
+              />
+            </Box>
+          </Box>
+
+          {uploadedDates.length > 0 && (
+            <Box sx={{ mt: 1 }}>
+              <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)', mb: 1.5 }} />
+              <Typography variant="caption" fontWeight={700} sx={{ color: '#fbbf24', mb: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                ⚠️ Already Uploaded Dates ({uploadedDates.length} dates in DB)
+              </Typography>
+              <Box sx={{
+                maxHeight: 120, overflowY: 'auto', display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5,
+                '&::-webkit-scrollbar': { width: 4 },
+                '&::-webkit-scrollbar-thumb': { background: 'rgba(255,255,255,0.2)', borderRadius: 2 }
+              }}>
+                {uploadedDates.map(d => (
+                  <Chip
+                    key={d} label={d} size="small"
+                    sx={{ bgcolor: 'rgba(239,68,68,0.18)', color: '#fca5a5', fontSize: '10px', fontWeight: 700,
+                      border: '1px solid rgba(239,68,68,0.35)', height: 20 }}
+                  />
+                ))}
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+          <Button onClick={() => setBankDateDialog(false)} sx={{ color: '#94a3b8', fontWeight: 600 }}>Cancel</Button>
+          <Button
+            onClick={handleDateConfirmed}
+            variant="contained"
+            disabled={!bankFromDate || !bankToDate}
+            sx={{
+              fontWeight: 800, borderRadius: 2, px: 3,
+              background: 'linear-gradient(135deg, #0891b2, #0e7490)',
+              '&:hover': { background: 'linear-gradient(135deg, #0e7490, #155e75)' },
+              '&:disabled': { bgcolor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.3)' }
+            }}
+          >
+            Continue → Select File
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {confirmDel && (
         <Dialog open={confirmDel} onClose={() => setConfirmDel(false)}>
           <DialogTitle sx={{ fontWeight: 800, color: 'error.main' }}>Delete {selectedIds.size} row(s)?</DialogTitle>
@@ -432,14 +790,34 @@ export default function AccountDetails({ onBack }) {
         </Dialog>
       )}
 
-      <Dialog open={!!bankUploadPreview} onClose={() => setBankUploadPreview(null)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ fontWeight: 800, color: '#15803d' }}>🏦 Bank Statement Imported!</DialogTitle>
+      <Dialog open={!!bankUploadPreview} onClose={() => setBankUploadPreview(null)} maxWidth="sm" fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            background: 'linear-gradient(145deg, #0f172a, #1e293b)',
+            color: '#f8fafc',
+            border: '1px solid rgba(255,255,255,0.08)'
+          }
+        }}
+      >
+        <DialogTitle sx={{ fontWeight: 800, color: '#4ade80', display: 'flex', alignItems: 'center', gap: 1 }}>
+          🏦 Bank Statement Imported!
+        </DialogTitle>
         <DialogContent>
-          <Typography variant="h3" fontWeight={900} color="#15803d" textAlign="center">{bankUploadPreview?.count}</Typography>
-          <Typography variant="body1" textAlign="center">transactions from <strong>{bankUploadPreview?.filename}</strong></Typography>
+          <Typography variant="h3" fontWeight={900} color="#4ade80" textAlign="center">{bankUploadPreview?.count}</Typography>
+          <Typography variant="body1" textAlign="center" sx={{ color: '#94a3b8' }}>
+            transactions from <strong style={{ color: '#f8fafc' }}>{bankUploadPreview?.filename}</strong>
+          </Typography>
+          {bankUploadPreview?.fromDate && (
+            <Typography variant="body2" textAlign="center" sx={{ mt: 1, color: '#7dd3fc', fontWeight: 600 }}>
+              📅 {bankUploadPreview.fromDate} → {bankUploadPreview.toDate}
+            </Typography>
+          )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setBankUploadPreview(null)} variant="contained" sx={{ bgcolor: '#15803d' }}>Got it</Button>
+          <Button onClick={() => setBankUploadPreview(null)} variant="contained"
+            sx={{ bgcolor: '#15803d', '&:hover': { bgcolor: '#166534' }, fontWeight: 800 }}
+          >Got it</Button>
         </DialogActions>
       </Dialog>
 

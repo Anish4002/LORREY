@@ -81,7 +81,7 @@ export default function InvoiceForm({ onBack }) {
     setIsScanTriggered(true);
     setIsProcessing(true);
     setProcessingMode("upload");
-    setStatus({ type: "info", message: "🖨️ Commanding your HP scanner... Place the document on the scanner and wait." });
+    setStatus({ type: "info", message: "🔍 Detecting your scanner... Place the document and wait." });
     try {
       const token = localStorage.getItem("token");
       await axios.post(`${API_URL}/invoice/scan-now`, {}, {
@@ -211,30 +211,17 @@ export default function InvoiceForm({ onBack }) {
     addon_charges: [],
   });
 
-  const handleAddAddon = () => {
-    const usedTypes = (formData.addon_charges || []).map(c => c.type);
-    const nextOpt = ADDON_OPTIONS.find(o => !usedTypes.includes(o.label));
-    if (!nextOpt) return; // all 4 already added
-    setFormData(prev => ({
-      ...prev,
-      addon_charges: [...(prev.addon_charges || []), { type: nextOpt.label, amount: nextOpt.amount }]
-    }));
-  };
-
-  const handleAddonChange = (index, selectedLabel) => {
-    const opt = ADDON_OPTIONS.find(o => o.label === selectedLabel);
+  const toggleAddon = (opt) => {
     setFormData(prev => {
-      const updated = [...(prev.addon_charges || [])];
-      updated[index] = { type: opt.label, amount: opt.amount };
-      return { ...prev, addon_charges: updated };
-    });
-  };
-
-  const handleRemoveAddon = (index) => {
-    setFormData(prev => {
-      const updated = [...(prev.addon_charges || [])];
-      updated.splice(index, 1);
-      return { ...prev, addon_charges: updated };
+      const current = prev.addon_charges || [];
+      const exists = current.find(c => c.type === opt.label);
+      if (exists) {
+        // Remove it
+        return { ...prev, addon_charges: current.filter(c => c.type !== opt.label) };
+      } else {
+        // Add it
+        return { ...prev, addon_charges: [...current, { type: opt.label, amount: opt.amount }] };
+      }
     });
   };
 
@@ -788,63 +775,125 @@ export default function InvoiceForm({ onBack }) {
               title="Add on Charges"
               sx={{ bgcolor: '#e3f2fd' }}
               titleTypographyProps={{ fontWeight: 800, color: '#1565c0' }}
-              action={
-                <Button
-                  variant="contained"
-                  size="small"
-                  startIcon={<AddCircleOutlineIcon />}
-                  onClick={handleAddAddon}
-                  disabled={(formData.addon_charges || []).length >= ADDON_OPTIONS.length}
-                  sx={{ mr: 1, borderRadius: '8px', background: 'linear-gradient(45deg,#1565c0,#1976d2)', boxShadow: '0 3px 8px rgba(25,118,210,0.3)', '&:hover': { background: 'linear-gradient(45deg,#0d47a1,#1565c0)' }, '&.Mui-disabled': { background: '#ccc' } }}
-                >
-                  Add Charge
-                </Button>
-              }
             />
-            <CardContent>
-              {(!formData.addon_charges || formData.addon_charges.length === 0) ? (
-                <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                  No add-on charges added. Click "Add Charge" to add one.
-                </Typography>
-              ) : (
-                <Box display="flex" flexDirection="column" gap={2}>
-                  {formData.addon_charges.map((charge, idx) => (
-                    <Box key={idx} display="flex" alignItems="center" gap={2}>
-                      <FormControl sx={{ minWidth: 280 }} size="small">
-                        <InputLabel>Charge Type</InputLabel>
-                        <Select
-                          value={charge.type}
-                          label="Charge Type"
-                          onChange={(e) => handleAddonChange(idx, e.target.value)}
+            <CardContent sx={{ pt: 1.5 }}>
+              <Box display="flex" flexDirection="column" gap={0}>
+                {ADDON_OPTIONS.map((opt) => {
+                  const addedIdx = (formData.addon_charges || []).findIndex(c => c.type === opt.label);
+                  const isAdded = addedIdx !== -1;
+                  return (
+                    <Box
+                      key={opt.label}
+                      display="flex"
+                      alignItems="center"
+                      gap={2}
+                      sx={{
+                        py: 1.2,
+                        px: 1.5,
+                        borderRadius: 2,
+                        mb: 0.5,
+                        transition: 'background 0.18s',
+                        bgcolor: isAdded ? 'rgba(21,101,192,0.07)' : 'transparent',
+                        border: isAdded ? '1.5px solid #90caf9' : '1.5px solid transparent',
+                        '&:hover': { bgcolor: isAdded ? 'rgba(21,101,192,0.10)' : 'rgba(0,0,0,0.03)' }
+                      }}
+                    >
+                      {/* Charge label + default amount */}
+                      <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        <Typography
+                          variant="body2"
+                          fontWeight={isAdded ? 800 : 600}
+                          color={isAdded ? '#1565c0' : 'text.primary'}
+                          sx={{ minWidth: 200 }}
                         >
-                          {ADDON_OPTIONS.map(opt => {
-                            const alreadyUsed = (formData.addon_charges || []).some((c, i) => i !== idx && c.type === opt.label);
-                            return (
-                              <MenuItem key={opt.label} value={opt.label} disabled={alreadyUsed}>
-                                {opt.label} — ₹{opt.amount.toLocaleString()} per Truck
-                              </MenuItem>
-                            );
-                          })}
-                        </Select>
-                      </FormControl>
-                      <TextField
-                        size="small"
-                        label="Amount (₹)"
-                        value={`₹${charge.amount.toLocaleString()}`}
-                        inputProps={{ readOnly: true }}
-                        sx={{ width: 140, '& .MuiInputBase-input': { fontWeight: 700, color: '#1565c0' } }}
-                      />
-                      <IconButton onClick={() => handleRemoveAddon(idx)} color="error" size="small" title="Remove">
-                        <RemoveCircleOutlineIcon />
-                      </IconButton>
+                          {opt.label}
+                        </Typography>
+                        <Typography
+                          variant="body2"
+                          fontWeight={600}
+                          color="text.secondary"
+                          sx={{ fontSize: '0.78rem', bgcolor: '#e3f2fd', px: 1, py: 0.3, borderRadius: 1 }}
+                        >
+                          ₹{opt.amount.toLocaleString()} / Truck
+                        </Typography>
+                      </Box>
+
+                      {/* Amount badge — only when added */}
+                      {isAdded && (
+                        <Typography
+                          variant="body2"
+                          fontWeight={900}
+                          color="#1565c0"
+                          sx={{
+                            fontSize: '0.95rem',
+                            bgcolor: '#dbeafe',
+                            px: 1.5, py: 0.4,
+                            borderRadius: 2,
+                            letterSpacing: 0.5
+                          }}
+                        >
+                          ₹{(formData.addon_charges[addedIdx].amount || 0).toLocaleString()}
+                        </Typography>
+                      )}
+
+                      {/* Add / Remove button */}
+                      {isAdded ? (
+                        <IconButton
+                          size="small"
+                          color="error"
+                          title="Remove"
+                          onClick={() => handleRemoveAddon(addedIdx)}
+                          sx={{
+                            bgcolor: '#fee2e2',
+                            '&:hover': { bgcolor: '#fecaca' },
+                            width: 32, height: 32
+                          }}
+                        >
+                          <RemoveCircleOutlineIcon fontSize="small" />
+                        </IconButton>
+                      ) : (
+                        <Button
+                          size="small"
+                          variant="contained"
+                          startIcon={<AddCircleOutlineIcon sx={{ fontSize: '16px !important' }} />}
+                          onClick={() => {
+                            setFormData(prev => ({
+                              ...prev,
+                              addon_charges: [...(prev.addon_charges || []), { type: opt.label, amount: opt.amount }]
+                            }));
+                          }}
+                          sx={{
+                            background: 'linear-gradient(135deg, #16a34a, #15803d)',
+                            color: '#fff',
+                            fontWeight: 800,
+                            fontSize: '0.72rem',
+                            letterSpacing: '0.06em',
+                            px: 1.5,
+                            py: 0.5,
+                            borderRadius: '20px',
+                            boxShadow: '0 2px 8px rgba(22,163,74,0.35)',
+                            minWidth: 64,
+                            '&:hover': {
+                              background: 'linear-gradient(135deg, #15803d, #166534)',
+                              boxShadow: '0 4px 12px rgba(22,163,74,0.45)',
+                            }
+                          }}
+                        >
+                          ADD
+                        </Button>
+                      )}
                     </Box>
-                  ))}
-                  <Box sx={{ mt: 1, pt: 1.5, borderTop: '1px dashed #90caf9', display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Typography variant="body2" fontWeight={700} color="text.secondary">Total Add-on:</Typography>
-                    <Typography variant="body1" fontWeight={900} color="primary.main">
-                      ₹{(formData.addon_charges.reduce((s, c) => s + (c.amount || 0), 0)).toLocaleString()}
-                    </Typography>
-                  </Box>
+                  );
+                })}
+              </Box>
+
+              {/* Total — only show when at least one charge is added */}
+              {(formData.addon_charges || []).length > 0 && (
+                <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px dashed #90caf9', display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="body2" fontWeight={700} color="text.secondary">Total Add-on:</Typography>
+                  <Typography variant="body1" fontWeight={900} color="primary.main">
+                    ₹{(formData.addon_charges.reduce((s, c) => s + (c.amount || 0), 0)).toLocaleString()}
+                  </Typography>
                 </Box>
               )}
             </CardContent>

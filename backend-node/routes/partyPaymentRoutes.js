@@ -7,11 +7,10 @@ const PartyPayment = require('../models/PartyPayment');
 function parseDate(val) {
   if (!val) return null;
   if (val instanceof Date) return isNaN(val) ? null : val;
-
   const str = String(val).trim();
 
-  // ── Detect DD-MM-YYYY (Indian format) — MUST check first ──
-  const ddmmyyyy = str.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  // ── Detect DD-MM-YYYY / DD/MM/YYYY (Indian format) — MUST check first ──
+  const ddmmyyyy = str.match(/^(\d{1,2})[\-\/](\d{1,2})[\-\/](\d{4})$/);
   if (ddmmyyyy) {
     const d = parseInt(ddmmyyyy[1]), m = parseInt(ddmmyyyy[2]), y = parseInt(ddmmyyyy[3]);
     if (d >= 1 && d <= 31 && m >= 1 && m <= 12) {
@@ -19,12 +18,22 @@ function parseDate(val) {
     }
   }
 
-  // ── Try ISO / standard JS parsing ──
+  // ── Handle YYYY-MM-DD ISO format ──
+  const yyyymmdd = str.match(/^(\d{4})[\-\/](\d{1,2})[\-\/](\d{1,2})/);
+  if (yyyymmdd) {
+    const y = parseInt(yyyymmdd[1]), m = parseInt(yyyymmdd[2]), d = parseInt(yyyymmdd[3]);
+    if (d >= 1 && d <= 31 && m >= 1 && m <= 12) {
+      return new Date(y, m - 1, d);
+    }
+  }
+
+  // ── Try standard JS parsing as final fallback ──
   const iso = new Date(str);
   if (!isNaN(iso.getTime())) return iso;
 
   return null;
 }
+
 
 function getDateParts(val) {
   const d = parseDate(val);

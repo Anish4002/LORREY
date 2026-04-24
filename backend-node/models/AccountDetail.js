@@ -10,7 +10,8 @@ const accountDetailSchema = new mongoose.Schema({
   chequeNo: { type: String, default: '' },
   withdraw: { type: String, default: '' },
   deposit: { type: String, default: '' },
-  closingBalance: { type: String, default: '' }
+  closingBalance: { type: String, default: '' },
+  _source: { type: String, default: 'manual' }
 }, {
   timestamps: true,
   collection: 'account_details'

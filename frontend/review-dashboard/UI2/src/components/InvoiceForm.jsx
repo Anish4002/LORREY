@@ -81,7 +81,7 @@ export default function InvoiceForm({ onBack }) {
     setIsScanTriggered(true);
     setIsProcessing(true);
     setProcessingMode("upload");
-    setStatus({ type: "info", message: "🖨️ Commanding your HP scanner... Place the document on the scanner and wait." });
+    setStatus({ type: "info", message: "🔍 Detecting your scanner... Place the document and wait." });
     try {
       const token = localStorage.getItem("token");
       await axios.post(`${API_URL}/invoice/scan-now`, {}, {
@@ -776,40 +776,126 @@ export default function InvoiceForm({ onBack }) {
               sx={{ bgcolor: '#e3f2fd' }}
               titleTypographyProps={{ fontWeight: 800, color: '#1565c0' }}
             />
-            <CardContent>
-              <Box display="flex" flexWrap="wrap" gap={2} mb={3}>
-                {ADDON_OPTIONS.map(opt => {
-                  const isActive = (formData.addon_charges || []).some(c => c.type === opt.label);
+            <CardContent sx={{ pt: 1.5 }}>
+              <Box display="flex" flexDirection="column" gap={0}>
+                {ADDON_OPTIONS.map((opt) => {
+                  const addedIdx = (formData.addon_charges || []).findIndex(c => c.type === opt.label);
+                  const isAdded = addedIdx !== -1;
                   return (
-                    <Button
+                    <Box
                       key={opt.label}
-                      variant={isActive ? "contained" : "outlined"}
-                      onClick={() => toggleAddon(opt)}
+                      display="flex"
+                      alignItems="center"
+                      gap={2}
                       sx={{
-                        borderRadius: '12px',
-                        py: 1, px: 2,
-                        fontWeight: 700,
-                        textTransform: 'none',
-                        borderWidth: '2px',
-                        '&:hover': { borderWidth: '2px' },
-                        transition: 'all 0.2s cubic-bezier(0.4,0,0.2,1)',
-                        boxShadow: isActive ? '0 4px 12px rgba(25,118,210,0.3)' : 'none'
+                        py: 1.2,
+                        px: 1.5,
+                        borderRadius: 2,
+                        mb: 0.5,
+                        transition: 'background 0.18s',
+                        bgcolor: isAdded ? 'rgba(21,101,192,0.07)' : 'transparent',
+                        border: isAdded ? '1.5px solid #90caf9' : '1.5px solid transparent',
+                        '&:hover': { bgcolor: isAdded ? 'rgba(21,101,192,0.10)' : 'rgba(0,0,0,0.03)' }
                       }}
                     >
-                      {opt.label} — ₹{opt.amount.toLocaleString()}
-                    </Button>
+                      {/* Charge label + default amount */}
+                      <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        <Typography
+                          variant="body2"
+                          fontWeight={isAdded ? 800 : 600}
+                          color={isAdded ? '#1565c0' : 'text.primary'}
+                          sx={{ minWidth: 200 }}
+                        >
+                          {opt.label}
+                        </Typography>
+                        <Typography
+                          variant="body2"
+                          fontWeight={600}
+                          color="text.secondary"
+                          sx={{ fontSize: '0.78rem', bgcolor: '#e3f2fd', px: 1, py: 0.3, borderRadius: 1 }}
+                        >
+                          ₹{opt.amount.toLocaleString()} / Truck
+                        </Typography>
+                      </Box>
+
+                      {/* Amount badge — only when added */}
+                      {isAdded && (
+                        <Typography
+                          variant="body2"
+                          fontWeight={900}
+                          color="#1565c0"
+                          sx={{
+                            fontSize: '0.95rem',
+                            bgcolor: '#dbeafe',
+                            px: 1.5, py: 0.4,
+                            borderRadius: 2,
+                            letterSpacing: 0.5
+                          }}
+                        >
+                          ₹{(formData.addon_charges[addedIdx].amount || 0).toLocaleString()}
+                        </Typography>
+                      )}
+
+                      {/* Add / Remove button */}
+                      {isAdded ? (
+                        <IconButton
+                          size="small"
+                          color="error"
+                          title="Remove"
+                          onClick={() => handleRemoveAddon(addedIdx)}
+                          sx={{
+                            bgcolor: '#fee2e2',
+                            '&:hover': { bgcolor: '#fecaca' },
+                            width: 32, height: 32
+                          }}
+                        >
+                          <RemoveCircleOutlineIcon fontSize="small" />
+                        </IconButton>
+                      ) : (
+                        <Button
+                          size="small"
+                          variant="contained"
+                          startIcon={<AddCircleOutlineIcon sx={{ fontSize: '16px !important' }} />}
+                          onClick={() => {
+                            setFormData(prev => ({
+                              ...prev,
+                              addon_charges: [...(prev.addon_charges || []), { type: opt.label, amount: opt.amount }]
+                            }));
+                          }}
+                          sx={{
+                            background: 'linear-gradient(135deg, #16a34a, #15803d)',
+                            color: '#fff',
+                            fontWeight: 800,
+                            fontSize: '0.72rem',
+                            letterSpacing: '0.06em',
+                            px: 1.5,
+                            py: 0.5,
+                            borderRadius: '20px',
+                            boxShadow: '0 2px 8px rgba(22,163,74,0.35)',
+                            minWidth: 64,
+                            '&:hover': {
+                              background: 'linear-gradient(135deg, #15803d, #166534)',
+                              boxShadow: '0 4px 12px rgba(22,163,74,0.45)',
+                            }
+                          }}
+                        >
+                          ADD
+                        </Button>
+                      )}
+                    </Box>
                   );
                 })}
               </Box>
 
-              <Divider sx={{ mb: 2, borderStyle: 'dashed' }} />
-
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                <Typography variant="body2" fontWeight={700} color="text.secondary">Total Add-on:</Typography>
-                <Typography variant="h5" fontWeight={900} color="primary.main">
-                  ₹{(formData.addon_charges?.reduce((s, c) => s + (c.amount || 0), 0) || 0).toLocaleString()}
-                </Typography>
-              </Box>
+              {/* Total — only show when at least one charge is added */}
+              {(formData.addon_charges || []).length > 0 && (
+                <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px dashed #90caf9', display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="body2" fontWeight={700} color="text.secondary">Total Add-on:</Typography>
+                  <Typography variant="body1" fontWeight={900} color="primary.main">
+                    ₹{(formData.addon_charges.reduce((s, c) => s + (c.amount || 0), 0)).toLocaleString()}
+                  </Typography>
+                </Box>
+              )}
             </CardContent>
           </Card>
 

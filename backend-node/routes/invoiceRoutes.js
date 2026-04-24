@@ -258,48 +258,83 @@ router.post("/upload", upload.single("invoice"), async (req, res) => {
 
 });
 
-// ── Physical Printer Scan Trigger ──────────────────────────────────────────────
-// Tries: 1) hp-scan (hplip - macOS native), 2) scanimage (SANE)
-// Setup: brew install hplip  (if hp-scan fails: brew install sane-backends)
+// ── Physical Scanner Trigger (Universal — HP, Epson, Canon, etc.) ─────────────────────────────
+// Strategy 1: scanimage with auto-detected device (works for all SANE-supported scanners)
+// Strategy 2: hp-scan (HPLIP — macOS HP driver fallback)
+// Setup: brew install sane-backends  (covers HP, Epson, Canon, Brother, Fujitsu, etc.)
 router.post("/scan-now", async (req, res) => {
     const { exec } = require("child_process");
     const os = require("os");
     const path = require("path");
 
     const scanOutputPath = path.join(os.tmpdir(), `lorrey_scan_${Date.now()}.jpg`);
-    const HP_SCAN    = "/opt/homebrew/bin/hp-scan";
     const SCANIMAGE  = "/opt/homebrew/bin/scanimage";
+    const HP_SCAN    = "/opt/homebrew/bin/hp-scan";
 
     let io = null;
     try { const { getIO } = require("../socket"); io = getIO(); } catch(_) {}
-    if (io) io.emit("scanner_status", { message: "🖨️ Activating HP scanner... please place your document and wait." });
+    if (io) io.emit("scanner_status", { message: "🔍 Detecting connected scanner..." });
 
     // Respond immediately — result arrives via socket
     res.json({ message: "Scan triggered. Watch the form update automatically when done." });
 
-    // Strategy 1: hp-scan from hplip (works natively with macOS HP driver)
-    const hpScanCmd = `"${HP_SCAN}" --res=300 --mode=gray --output="${scanOutputPath}"`;
-    exec(hpScanCmd, { timeout: 90000 }, async (err1) => {
-        if (!err1) {
-            console.log("[Scan] hp-scan succeeded.");
-            return processScanFile(scanOutputPath, io);
-        }
-        console.warn("[Scan] hp-scan failed:", err1.message, "→ Trying scanimage...");
-        if (io) io.emit("scanner_status", { message: "🔄 Trying SANE driver..." });
+    // ── Step 1: Auto-discover connected scanner device ──
+    exec(`"${SCANIMAGE}" --list-devices 2>/dev/null`, { timeout: 15000 }, (listErr, stdout) => {
+        let deviceFlag = "";
 
-        // Strategy 2: scanimage (SANE)
-        const saneCmd = `"${SCANIMAGE}" --format=jpeg --resolution=300 -x 210 -y 297 --output-file="${scanOutputPath}"`;
-        exec(saneCmd, { timeout: 90000 }, async (err2) => {
-            if (!err2) {
+        if (!listErr && stdout) {
+            // Parse first device from output, e.g.:
+            // device `epson2:libusb:001:003' is a Epson ...
+            // device `hpaio:/usb/...' is a HP ...
+            const match = stdout.match(/device `([^']+)'/);
+            if (match && match[1]) {
+                deviceFlag = `--device-name="${match[1]}"`;
+                // Detect brand for user-friendly status message
+                const devId = match[1].toLowerCase();
+                const brand = devId.includes('epson') ? 'Epson'
+                    : devId.includes('hp') || devId.includes('hpaio') ? 'HP'
+                    : devId.includes('canon') ? 'Canon'
+                    : devId.includes('brother') ? 'Brother'
+                    : devId.includes('fujitsu') ? 'Fujitsu'
+                    : 'Scanner';
+                console.log(`[Scan] Detected ${brand} device: ${match[1]}`);
+                if (io) io.emit("scanner_status", { message: `🖨️ ${brand} scanner detected! Place document and wait...` });
+            } else {
+                console.warn("[Scan] scanimage listed no devices, will try without --device-name");
+            }
+        }
+
+        // ── Strategy 1: scanimage (SANE — universal for all brands) ──
+        const saneCmd = `"${SCANIMAGE}" ${deviceFlag} --format=jpeg --resolution=300 -x 210 -y 297 --output-file="${scanOutputPath}"`;
+        exec(saneCmd, { timeout: 90000 }, async (err1) => {
+            if (!err1) {
                 console.log("[Scan] scanimage succeeded.");
                 return processScanFile(scanOutputPath, io);
             }
-            console.error("[Scan] Both drivers failed:", err2.message);
-            const helpMsg = "HP scanner not detected. Please: 1) Make sure printer is ON+USB connected, 2) Run: brew install hplip";
-            if (io) io.emit("scanner_error", { error: helpMsg });
+            console.warn("[Scan] scanimage failed:", err1.message, "→ Trying hp-scan fallback...");
+            if (io) io.emit("scanner_status", { message: "🔄 Trying HP driver fallback..." });
+
+            // ── Strategy 2: hp-scan (HPLIP — HP-specific fallback) ──
+            const hpScanCmd = `"${HP_SCAN}" --res=300 --mode=gray --output="${scanOutputPath}"`;
+            exec(hpScanCmd, { timeout: 90000 }, async (err2) => {
+                if (!err2) {
+                    console.log("[Scan] hp-scan succeeded.");
+                    return processScanFile(scanOutputPath, io);
+                }
+                console.error("[Scan] All drivers failed.", err2.message);
+                const helpMsg = [
+                    "❌ No scanner detected. Please check:",
+                    "1. Scanner is ON and connected via USB or network.",
+                    "2. Run: brew install sane-backends",
+                    "3. For Epson: Also install Epson Scan 2 driver from epson.com",
+                    "4. For Canon: Install Canon IJ Scan Utility from canon.com",
+                ].join(" ");
+                if (io) io.emit("scanner_error", { error: helpMsg });
+            });
         });
     });
 });
+
 
 async function processScanFile(scanOutputPath, io) {
     const fs = require("fs");
@@ -313,7 +348,7 @@ async function processScanFile(scanOutputPath, io) {
 
         const fileBuffer = fs.readFileSync(scanOutputPath);
         const fileName = path.basename(scanOutputPath);
-        const key = `upload-invoice/${Date.now()}_hp_scan.jpg`;
+        const key = `upload-invoice/${Date.now()}_scan.jpg`;
         const s3Url = `https://lorreyproject.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
 
         await s3.send(new PutObjectCommand({

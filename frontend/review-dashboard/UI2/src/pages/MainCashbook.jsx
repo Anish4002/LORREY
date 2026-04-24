@@ -559,7 +559,7 @@ export default function MainCashbook({ onBack }) {
                       cellBg = '#fca5a5'; // red — invalid date
                     } else if (col.key === 'DIFFERENCE' && num(displayVal) !== 0) {
                       cellBg = '#fca5a5'; // red mismatch
-                    } else if (col.key === 'P_SOURCE' && sourceYellow) {
+                    } else if (col.key === 'P_SOURCE' && (sourceYellow || String(displayVal).startsWith('DAC-RS-'))) {
                       cellBg = '#fef08a'; // yellow when Others > 0
                     } else if (isDirty) {
                       cellBg = '#fff3cd'; // dirty edits

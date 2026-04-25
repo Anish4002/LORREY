@@ -79,8 +79,16 @@ const DB_KEYS = {
   puc: 'PUC ',
   npValidity: 'NP Validity ',
   driverName: 'Driver Name ',
-  licenseNo: 'License No ',
   licenseValidity: 'License Validity ',
+  ownerBankAcc: 'Owner Bank Account No ',
+  ownerIfsc: 'Owner IFSC Code ',
+  driverContactNo: 'Driver Contact No ',
+  driverPanNo: 'Driver PAN No ',
+  driverAadharNo: 'Driver Aadhar No ',
+  driverAddress: 'Driver Address ',
+  driverBankAcc: 'Driver Bank Account No ',
+  driverIfsc: 'Driver IFSC Code ',
+  driverPanAadharLink: 'Driver PAN Aadhar Link ',
 };
 
 const getStr = (...candidates) => {
@@ -172,6 +180,8 @@ export default function TruckContactManager({ open, onClose }) {
           address: prev.address || getStr(match["Adress "], match["Address"], match.address),
           custType: prev.custType || getStr(match["TYPE OF CUSTOMER "], match.type),
           panAadharLink: prev.panAadharLink || getStr(match["PAN Addahar Link "], match.pan_aadhar_link),
+          ownerBankAcc: prev.ownerBankAcc || getStr(match["Owner Bank Account No "], match.owner_bank_acc),
+          ownerIfsc: prev.ownerIfsc || getStr(match["Owner IFSC Code "], match.owner_ifsc),
         }));
       }
     }
@@ -216,6 +226,15 @@ export default function TruckContactManager({ open, onClose }) {
         driverName: form.driverName,
         licenseNo: form.licenseNo,
         licenseValidity: form.licenseValidity,
+        ownerBankAcc: form.ownerBankAcc,
+        ownerIfsc: form.ownerIfsc,
+        driverContactNo: form.driverContactNo,
+        driverPanNo: form.driverPanNo,
+        driverAadharNo: form.driverAadharNo,
+        driverAddress: form.driverAddress,
+        driverBankAcc: form.driverBankAcc,
+        driverIfsc: form.driverIfsc,
+        driverPanAadharLink: form.driverPanAadharLink,
       };
 
       Object.entries(formToKey).forEach(([k, v]) => {
@@ -299,6 +318,15 @@ export default function TruckContactManager({ open, onClose }) {
       permit: getStr(c["Permit "], c.permit),
       licenseNo: getStr(c["License No "], c.license_no),
       licenseValidity: getStr(c["License Validity "], c.license_validity),
+      ownerBankAcc: getStr(c["Owner Bank Account No "], c.owner_bank_acc),
+      ownerIfsc: getStr(c["Owner IFSC Code "], c.owner_ifsc),
+      driverContactNo: getStr(c["Driver Contact No "], c.driver_contact_no),
+      driverPanNo: getStr(c["Driver PAN No "], c.driver_pan_no),
+      driverAadharNo: getStr(c["Driver Aadhar No "], c.driver_aadhar_no),
+      driverAddress: getStr(c["Driver Address "], c.driver_address),
+      driverBankAcc: getStr(c["Driver Bank Account No "], c.driver_bank_acc),
+      driverIfsc: getStr(c["Driver IFSC Code "], c.driver_ifsc),
+      driverPanAadharLink: getStr(c["Driver PAN Aadhar Link "], c.driver_pan_aadhar_link),
     });
     setEditId(c._id);
     setTab(0);
@@ -537,6 +565,12 @@ export default function TruckContactManager({ open, onClose }) {
                         </Box>
                         {tf('Complete Correspondence Address', 'address', HomeIcon)}
 
+                        <SectionLabel icon={ReceiptIcon} label="Owner Banking Details" />
+                        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1.2fr 1fr' }, gap: 2 }}>
+                          {tf('Bank Account No.', 'ownerBankAcc', ArticleIcon)}
+                          {tf('IFSC Code', 'ownerIfsc', ArticleIcon)}
+                        </Box>
+
                         <SectionLabel icon={ReceiptIcon} label="GST Information" />
                         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1.5fr 0.5fr' }, gap: 2 }}>
                           {tf('GST Type', 'gstType')}
@@ -552,14 +586,22 @@ export default function TruckContactManager({ open, onClose }) {
                         <SectionLabel icon={BadgeIcon} label="Truck Driver Information" />
                         {tf('Full Driver Name', 'driverName', PersonIcon)}
                         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+                          {tf('Driver Phone No.', 'driverContactNo', PhoneIcon)}
+                          {tf('Driver Address', 'driverAddress', HomeIcon)}
+                        </Box>
+                        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
                           {tf('License No (DL)', 'licenseNo', ArticleIcon)}
                           {tf('License Expiry Date', 'licenseValidity', EventIcon)}
                         </Box>
-                        <Box sx={{ mt: 4, p: 3, bgcolor: '#f8fafc', borderRadius: '12px', border: '1px dashed #e2e8f0', textAlign: 'center' }}>
-                          <Typography variant="body2" color="text.secondary">
-                            Ensure Driver License details match regional transport records.
-                          </Typography>
+                        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+                          {tf('Driver PAN No.', 'driverPanNo', ArticleIcon)}
+                          {tf('Driver Aadhar No.', 'driverAadharNo', BadgeIcon)}
                         </Box>
+                        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+                          {selectTf('PAN-Aadhar Link Status', 'driverPanAadharLink', ['Yes', 'No'], BadgeIcon)}
+                          {tf('Driver Bank Acc No.', 'driverBankAcc', ReceiptIcon)}
+                        </Box>
+                        {tf('Driver IFSC Code', 'driverIfsc', ReceiptIcon)}
                       </Box>
                     )}
 
@@ -725,6 +767,18 @@ export default function TruckContactManager({ open, onClose }) {
                     <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
                       {tf('License No (DL)', 'licenseNo', ArticleIcon)}
                       {tf('License Validity', 'licenseValidity', EventIcon)}
+                    </Box>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                      {tf('Driver Phone', 'driverContactNo', PhoneIcon)}
+                      {tf('Driver PAN', 'driverPanNo', ArticleIcon)}
+                    </Box>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                      {tf('Driver Aadhar', 'driverAadharNo', BadgeIcon)}
+                      {tf('Driver Address', 'driverAddress', HomeIcon)}
+                    </Box>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                      {tf('Bank Account No.', 'driverBankAcc', ReceiptIcon)}
+                      {tf('IFSC Code', 'driverIfsc', ReceiptIcon)}
                     </Box>
 
                     {/* Full Digital Document Vault for Temp Driver */}

@@ -670,12 +670,12 @@ export default function TruckContactManager({ open, onClose }) {
                       <Box sx={{ animation: 'fadeIn 0.3s ease-in-out' }}>
                         <SectionLabel icon={EventIcon} label="Road Side Validities" />
                         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5 }}>
-                          {uploadTf('RC Validity', 'rcValidity', 'rc', EventIcon)}
-                          {uploadTf('Insurance Validity', 'insuranceValidity', 'insurance', EventIcon)}
-                          {uploadTf('Fitness Validity', 'fitnessValidity', 'fitness', EventIcon)}
-                          {uploadTf('Road Tax Validity', 'roadTaxValidity', 'roadtax', EventIcon)}
-                          {uploadTf('PUC Validity', 'puc', 'puc', EventIcon)}
-                          {uploadTf('NP Validity', 'npValidity', 'np', EventIcon)}
+                          {tf('RC Validity', 'rcValidity', EventIcon)}
+                          {tf('Insurance Validity', 'insuranceValidity', EventIcon)}
+                          {tf('Fitness Validity', 'fitnessValidity', EventIcon)}
+                          {tf('Road Tax Validity', 'roadTaxValidity', EventIcon)}
+                          {tf('PUC Validity', 'puc', EventIcon)}
+                          {tf('NP Validity', 'npValidity', EventIcon)}
                         </Box>
                         {tf('Permit Details & Serial', 'permit', ArticleIcon)}
 

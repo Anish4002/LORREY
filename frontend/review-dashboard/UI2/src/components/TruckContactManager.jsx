@@ -121,6 +121,7 @@ export default function TruckContactManager({ open, onClose }) {
     { id: 'rc', label: 'RC (Registration Certificate)', status: 'Pending' },
     { id: 'dl', label: 'Driving License', status: 'Pending' },
     { id: 'insurance', label: 'Insurance Policy', status: 'Pending' },
+    { id: 'puc', label: 'PUC Copy', status: 'Pending' },
   ]);
 
   useEffect(() => {
@@ -394,6 +395,62 @@ export default function TruckContactManager({ open, onClose }) {
     </FieldBox>
   );
 
+  const uploadTf = (label, field, docId, Icon = null) => {
+    const doc = docs.find(d => d.id === docId);
+    return (
+      <FieldBox>
+        <TextField
+          fullWidth
+          label={label}
+          value={form[field] || ''}
+          onChange={e => handleChange(field, e.target.value)}
+          error={!!errors[field]}
+          helperText={errors[field]}
+          InputProps={{
+            sx: inputSx,
+            startAdornment: Icon ? (
+              <Icon sx={{ color: '#7b1fa2', mr: 1, fontSize: 18 }} />
+            ) : null,
+            endAdornment: (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                {doc?.status === 'Uploaded' && <CheckCircleIcon sx={{ color: '#16a34a', fontSize: 18 }} />}
+                <Button
+                  component="label"
+                  size="small"
+                  startIcon={<CloudUploadIcon sx={{ fontSize: 16 }} />}
+                  sx={{ 
+                    textTransform: 'none', 
+                    fontWeight: 800, 
+                    fontSize: '11px',
+                    color: doc?.status === 'Uploaded' ? '#16a34a' : '#7b1fa2',
+                    bgcolor: doc?.status === 'Uploaded' ? '#f0fdf4' : 'transparent',
+                    '&:hover': { bgcolor: doc?.status === 'Uploaded' ? '#dcfce7' : '#f3e5f5' }
+                  }}
+                >
+                  {doc?.status === 'Uploaded' ? 'Uploaded' : 'Upload PDF'}
+                  <input
+                    type="file"
+                    hidden
+                    accept="application/pdf"
+                    onChange={(e) => {
+                      if (e.target.files[0]) {
+                        const newDocs = docs.map(d =>
+                          d.id === docId ? { ...d, status: 'Uploaded', fileName: e.target.files[0].name } : d
+                        );
+                        setDocs(newDocs);
+                        setSnack({ type: 'success', message: `${label} attached.` });
+                      }
+                    }}
+                  />
+                </Button>
+              </Box>
+            )
+          }}
+        />
+      </FieldBox>
+    );
+  };
+
   return (
     <>
       <Dialog
@@ -610,11 +667,11 @@ export default function TruckContactManager({ open, onClose }) {
                       <Box sx={{ animation: 'fadeIn 0.3s ease-in-out' }}>
                         <SectionLabel icon={EventIcon} label="Road Side Validities" />
                         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5 }}>
-                          {tf('RC Validity', 'rcValidity', EventIcon)}
-                          {tf('Insurance Validity', 'insuranceValidity', EventIcon)}
+                          {uploadTf('RC Validity', 'rcValidity', 'rc', EventIcon)}
+                          {uploadTf('Insurance Validity', 'insuranceValidity', 'insurance', EventIcon)}
                           {tf('Fitness Validity', 'fitnessValidity', EventIcon)}
                           {tf('Road Tax Validity', 'roadTaxValidity', EventIcon)}
-                          {tf('PUC Validity', 'puc', EventIcon)}
+                          {uploadTf('PUC Validity', 'puc', 'puc', EventIcon)}
                           {tf('NP Validity', 'npValidity', EventIcon)}
                         </Box>
                         {tf('Permit Details & Serial', 'permit', ArticleIcon)}

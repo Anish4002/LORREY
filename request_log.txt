@@ -1042,3 +1042,12 @@
 [2026-04-25T09:06:51.917Z] GET /auth/admin/pending-registrations
 [2026-04-25T09:07:21.915Z] GET /system/portal-status
 [2026-04-25T09:07:21.915Z] GET /auth/admin/pending-registrations
+[2026-04-25T09:07:51.916Z] POST /system/heartbeat
+[2026-04-25T09:07:51.917Z] GET /system/portal-status
+[2026-04-25T09:07:51.917Z] GET /auth/admin/pending-registrations
+[2026-04-25T09:08:21.917Z] GET /system/portal-status
+[2026-04-25T09:08:21.919Z] GET /auth/admin/pending-registrations
+[2026-04-25T09:08:51.253Z] POST /system/heartbeat
+[2026-04-25T09:08:51.254Z] GET /system/portal-status
+[2026-04-25T09:08:51.254Z] GET /auth/admin/pending-registrations
+[2026-04-25T09:08:51.257Z] POST /system/portal-logout

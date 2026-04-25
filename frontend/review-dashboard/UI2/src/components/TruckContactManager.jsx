@@ -394,62 +394,6 @@ export default function TruckContactManager({ open, onClose }) {
     </FieldBox>
   );
 
-  const uploadTf = (label, field, docId, Icon = null) => {
-    const doc = docs.find(d => d.id === docId);
-    return (
-      <FieldBox>
-        <TextField
-          fullWidth
-          label={label}
-          value={form[field] || ''}
-          onChange={e => handleChange(field, e.target.value)}
-          error={!!errors[field]}
-          helperText={errors[field]}
-          InputProps={{
-            sx: inputSx,
-            startAdornment: Icon ? (
-              <Icon sx={{ color: '#7b1fa2', mr: 1, fontSize: 18 }} />
-            ) : null,
-            endAdornment: (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                {doc?.status === 'Uploaded' && <CheckCircleIcon sx={{ color: '#16a34a', fontSize: 18 }} />}
-                <Button
-                  component="label"
-                  size="small"
-                  startIcon={<CloudUploadIcon sx={{ fontSize: 16 }} />}
-                  sx={{ 
-                    textTransform: 'none', 
-                    fontWeight: 800, 
-                    fontSize: '11px',
-                    color: doc?.status === 'Uploaded' ? '#16a34a' : '#7b1fa2',
-                    bgcolor: doc?.status === 'Uploaded' ? '#f0fdf4' : 'transparent',
-                    '&:hover': { bgcolor: doc?.status === 'Uploaded' ? '#dcfce7' : '#f3e5f5' }
-                  }}
-                >
-                  {doc?.status === 'Uploaded' ? 'Uploaded' : 'Upload PDF'}
-                  <input
-                    type="file"
-                    hidden
-                    accept="application/pdf"
-                    onChange={(e) => {
-                      if (e.target.files[0]) {
-                        const newDocs = docs.map(d =>
-                          d.id === docId ? { ...d, status: 'Uploaded', fileName: e.target.files[0].name } : d
-                        );
-                        setDocs(newDocs);
-                        setSnack({ type: 'success', message: `${label} attached.` });
-                      }
-                    }}
-                  />
-                </Button>
-              </Box>
-            )
-          }}
-        />
-      </FieldBox>
-    );
-  };
-
   return (
     <>
       <Dialog
@@ -661,82 +605,35 @@ export default function TruckContactManager({ open, onClose }) {
                       </Box>
                     )}
 
-                     {/* Sub-Tab 2: COMPLIANCE & VALIDITY */}
+                    {/* Sub-Tab 2: COMPLIANCE & VALIDITY */}
                     {formTab === 2 && (
                       <Box sx={{ animation: 'fadeIn 0.3s ease-in-out' }}>
-                        <SectionLabel icon={EventIcon} label="Vehicle Compliance" />
+                        <SectionLabel icon={EventIcon} label="Road Side Validities" />
                         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5 }}>
-                          {uploadTf('RC Validity', 'rcValidity', 'rc', EventIcon)}
-                          {uploadTf('Insurance Validity', 'insuranceValidity', 'insurance', EventIcon)}
+                          {tf('RC Validity', 'rcValidity', EventIcon)}
+                          {tf('Insurance Validity', 'insuranceValidity', EventIcon)}
+                          {tf('Fitness Validity', 'fitnessValidity', EventIcon)}
+                          {tf('Road Tax Validity', 'roadTaxValidity', EventIcon)}
+                          {tf('PUC Validity', 'puc', EventIcon)}
+                          {tf('NP Validity', 'npValidity', EventIcon)}
                         </Box>
-                        <Box sx={{ mt: 2, p: 2, bgcolor: '#fff9c4', borderRadius: '12px', border: '1px solid #fff176' }}>
-                           <Typography variant="caption" fontWeight={800} color="#f57f17">
-                             IMPORTANT: RC and Insurance validity updates must match the attached PDF certificates.
-                           </Typography>
+                        {tf('Permit Details & Serial', 'permit', ArticleIcon)}
+
+                        <SectionLabel icon={ReceiptIcon} label="Financial Settings" />
+                        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+                          {selectTf('NIL TDS Option', 'nilTds', ['Yes', 'No'], ArticleIcon)}
+                          {tf('TDS Category', 'tdsApp', ReceiptIcon)}
                         </Box>
+                        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+                          {tf('Basic Freight Comm', 'basicFreight', ReceiptIcon)}
+                          {tf('Incentive Comm', 'incentiveComm', ReceiptIcon)}
+                        </Box>
+                        {tf('Specific Vehicle Detail', 'vehType', DirectionsCarIcon)}
                       </Box>
                     )}
                   </Box>
                 </Box>
 
-                {/* ─── DIGITAL DOCUMENT VAULT (Universal to all tabs) ─── */}
-                <Box sx={{ px: 3, pb: 3 }}>
-                  <SectionLabel icon={CloudUploadIcon} label="Digital Document Vault" />
-                  <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
-                    Upload scanned PDFs of mandatory documents for one-to-one verification.
-                  </Typography>
-
-                  <Box sx={{ border: '1px solid #f3e5f5', borderRadius: '16px', overflow: 'hidden' }}>
-                    {docs.map((doc, idx) => (
-                      <Box key={doc.id} sx={{
-                        display: 'flex', alignItems: 'center', gap: 2, p: 1.5,
-                        borderBottom: idx === docs.length - 1 ? 'none' : '1px solid #f1f5f9',
-                        bgcolor: doc.status === 'Uploaded' ? '#f0fdf4' : 'transparent'
-                      }}>
-                        <DescriptionIcon sx={{ color: doc.status === 'Uploaded' ? '#16a34a' : '#94a3b8', fontSize: 20 }} />
-                        <Typography flex={1} variant="body2" fontWeight={700} color={doc.status === 'Uploaded' ? '#166534' : '#475569'}>
-                          {doc.label}
-                        </Typography>
-
-                        <Chip
-                          label={doc.status}
-                          size="small"
-                          icon={doc.status === 'Uploaded' ? <CheckCircleIcon /> : undefined}
-                          sx={{
-                            fontSize: '10px', height: 20, fontWeight: 800,
-                            bgcolor: doc.status === 'Uploaded' ? '#dcfce7' : '#f1f5f9',
-                            color: doc.status === 'Uploaded' ? '#166534' : '#64748b'
-                          }}
-                        />
-
-                        <Button
-                          component="label" size="small" variant="text"
-                          sx={{ textTransform: 'none', fontWeight: 800, color: '#7b1fa2' }}
-                        >
-                          {doc.status === 'Uploaded' ? 'Change PDF' : 'Upload PDF'}
-                          <input type="file" hidden accept="application/pdf" onChange={(e) => {
-                            if (e.target.files[0]) {
-                              const newDocs = [...docs];
-                              newDocs[idx].status = 'Uploaded';
-                              newDocs[idx].fileName = e.target.files[0].name;
-                              setDocs(newDocs);
-                            }
-                          }} />
-                        </Button>
-                      </Box>
-                    ))}
-                    <Button
-                      fullWidth size="small" startIcon={<AddCircleIcon />}
-                      onClick={() => {
-                        const label = window.prompt("Enter Document Name (e.g. Fitness Certificate):");
-                        if (label) setDocs([...docs, { id: Date.now(), label, status: 'Pending' }]);
-                      }}
-                      sx={{ py: 1.5, bgcolor: '#faf5ff', color: '#7b1fa2', fontWeight: 800, textTransform: 'none', borderRadius: 0, '&:hover': { bgcolor: '#f3e5f5' } }}
-                    >
-                      Add One-to-One More Column (Custom Document)
-                    </Button>
-                  </Box>
-                </Box>
 
                 {/* ── Save Button — matches VoucherDialog purple gradient ── */}
                 <Button
@@ -826,35 +723,6 @@ export default function TruckContactManager({ open, onClose }) {
                       {tf('IFSC Code', 'driverIfsc', ReceiptIcon)}
                     </Box>
 
-                    {/* Full Digital Document Vault for Temp Driver */}
-                    <Box sx={{ mt: 2 }}>
-                      <SectionLabel icon={CloudUploadIcon} label="Verification Vault" />
-                      <Box sx={{ border: '1px solid #f3e5f5', borderRadius: '16px', overflow: 'hidden', bgcolor: '#fff' }}>
-                        {docs.map((doc, idx) => (
-                          <Box key={doc.id} sx={{
-                            display: 'flex', alignItems: 'center', gap: 2, p: 1.5,
-                            borderBottom: idx === docs.length - 1 ? 'none' : '1px solid #f1f5f9',
-                            bgcolor: doc.status === 'Uploaded' ? '#f0fdf4' : 'transparent'
-                          }}>
-                            <DescriptionIcon sx={{ color: doc.status === 'Uploaded' ? '#16a34a' : '#94a3b8', fontSize: 18 }} />
-                            <Typography flex={1} variant="caption" fontWeight={800} color={doc.status === 'Uploaded' ? '#166534' : '#475569'}>
-                              {doc.label}
-                            </Typography>
-                            <Chip label={doc.status} size="small" sx={{ fontSize: '9px', height: 18, fontWeight: 800, bgcolor: doc.status === 'Uploaded' ? '#dcfce7' : '#f1f5f9' }} />
-                            <Button component="label" size="small" variant="text" sx={{ textTransform: 'none', fontWeight: 800, color: '#7b1fa2', fontSize: '11px' }}>
-                              {doc.status === 'Uploaded' ? 'Change' : 'Upload'}
-                              <input type="file" hidden accept="application/pdf" onChange={(e) => {
-                                if (e.target.files[0]) {
-                                  const newDocs = [...docs];
-                                  newDocs[idx].status = 'Uploaded';
-                                  setDocs(newDocs);
-                                }
-                              }} />
-                            </Button>
-                          </Box>
-                        ))}
-                      </Box>
-                    </Box>
 
                     <Alert severity="info" sx={{ mt: 3, mb: 1, borderRadius: '12px', backgroundColor: '#f0f9ff', color: '#075985', border: '1px solid #bae6fd' }}>
                       <Typography variant="caption" fontWeight={700}>

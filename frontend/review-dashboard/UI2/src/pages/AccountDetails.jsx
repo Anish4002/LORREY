@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import {
   Box, Button, CircularProgress, Typography, IconButton,
   Snackbar, Alert, Chip, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions,
-  Autocomplete, TextField, Divider
+  Autocomplete, TextField, Divider, LinearProgress
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import SaveIcon from '@mui/icons-material/Save';
@@ -30,6 +30,7 @@ export const COLUMNS = [
   { key: 'Withdraw', label: 'WITHDRAW', width: 130 },
   { key: 'Deposit', label: 'DEPOSIT', width: 130 },
   { key: 'Closing Balance', label: 'CLOSING\nBALANCE', width: 140 },
+  { key: 'Remittance Copy', label: 'REMITTANCE\nCOPY', width: 150 },
 ];
 
 const LEDGER_OPTIONS = [
@@ -70,7 +71,6 @@ export default function AccountDetails({ onBack }) {
   const [uploading, setUploading] = useState(false);
   const [snack, setSnack] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
-  const [deleting, setDeleting] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const [bankUploadPreview, setBankUploadPreview] = useState(null);
   const [bankDateDialog, setBankDateDialog] = useState(false);
@@ -80,6 +80,7 @@ export default function AccountDetails({ onBack }) {
   const fileInputRef = useRef(null);
   const [filterFrom, setFilterFrom] = useState('');
   const [filterTo, setFilterTo] = useState('');
+  const [rowUploading, setRowUploading] = useState(null); // Track per-row upload state
 
   const dirtyCount = Object.keys(localData).length;
   const allSelected = entries.length > 0 && selectedIds.size === entries.length;
@@ -93,7 +94,6 @@ export default function AccountDetails({ onBack }) {
     else setSelectedIds(new Set(entries.map(r => r._id)));
   };
 
-  // Initialize socket inside component or use a stable reference
   useEffect(() => {
     let socket;
     try {
@@ -124,7 +124,6 @@ export default function AccountDetails({ onBack }) {
     }
   }, []);
 
-  // Fetch already-uploaded date ranges so we can warn the user
   const fetchUploadedDates = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
@@ -133,7 +132,6 @@ export default function AccountDetails({ onBack }) {
       });
       if (res.data.success) setUploadedDates(res.data.uploadedDates || []);
     } catch (e) {
-      // non-critical
     }
   }, []);
 
@@ -146,15 +144,44 @@ export default function AccountDetails({ onBack }) {
     entries.map(row => ({ ...row, ...(localData[row._id] || {}) })),
     [entries, localData]);
 
-  // Date-range filtered view (client-side, no refetch needed)
   const filteredRows = useMemo(() => {
-    if (!filterFrom && !filterTo) return computedRows;
-    return computedRows.filter(row => {
-      const d = row['Transaction Date'] || '';
-      if (filterFrom && d < filterFrom) return false;
-      if (filterTo && d > filterTo) return false;
-      return true;
+    const parseDateStr = (dStr) => {
+      if (!dStr) return null;
+      const parts = String(dStr).split(/[-\/]/);
+      if (parts.length !== 3) return null;
+      if (parts[0].length === 4) {
+        return new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2])).getTime();
+      } else {
+        return new Date(parseInt(parts[2]), parseInt(parts[1])-1, parseInt(parts[0])).getTime();
+      }
+    };
+
+    let result = [...computedRows];
+    if (filterFrom || filterTo) {
+      const fromTime = filterFrom ? new Date(filterFrom).getTime() : 0;
+      const toTime = filterTo ? new Date(filterTo).getTime() : Infinity;
+      result = result.filter(row => {
+        const d = row['Transaction Date'] || row.transactionDate || '';
+        const t = parseDateStr(d);
+        if (!t) return true; // keep empty dates if filtering? Or drop them? Let's keep or drop? Let's drop if there is a filter.
+        if (fromTime && t < fromTime) return false;
+        if (toTime && toTime !== Infinity && t > toTime) return false;
+        return true;
+      });
+    }
+
+    result.sort((a, b) => {
+      const tA = parseDateStr(a['Transaction Date'] || a.transactionDate) || 0;
+      const tB = parseDateStr(b['Transaction Date'] || b.transactionDate) || 0;
+      // Also consider created_at for stable sort if dates are equal
+      if (tB !== tA) return tB - tA; 
+      // If dates are equal, sort new rows to top, or use internal ID
+      if (a.isNewRow && !b.isNewRow) return -1;
+      if (!a.isNewRow && b.isNewRow) return 1;
+      return 0;
     });
+
+    return result;
   }, [computedRows, filterFrom, filterTo]);
 
   const isFiltered = !!(filterFrom || filterTo);
@@ -165,16 +192,39 @@ export default function AccountDetails({ onBack }) {
 
   const handleAddRow = () => {
     const newId = 'new_' + Date.now();
+    const today = new Date().toISOString().split('T')[0]; // Auto-fill today's date (YYYY-MM-DD)
     setEntries(prev => [{ _id: newId, isNewRow: true }, ...prev]);
-    setLocalData(prev => ({ ...prev, [newId]: { isNewRow: true } }));
+    setLocalData(prev => ({ 
+      ...prev, 
+      [newId]: { 
+        isNewRow: true,
+        'Transaction Date': today 
+      } 
+    }));
   };
 
   const handleBulkDelete = async () => {
-    setDeleting(true);
     try {
       const token = localStorage.getItem('token');
       const ids = [...selectedIds].filter(id => !id.startsWith('new_'));
       if (ids.length > 0) {
+        // Clear main cashbook for each deleted 'Main cash' row
+        for (const id of ids) {
+          const row = entries.find(e => e._id === id);
+          if (row && row['Ledger Name'] && row['Ledger Name'].toLowerCase() === 'main cash') {
+            const transactionDate = row['Transaction Date'] || row.transactionDate;
+            if (transactionDate) {
+              try {
+                await axios.post(`${API_URL}/account-details/clear-main-cash`, { transactionDate }, {
+                  headers: { Authorization: `Bearer ${token}` }
+                });
+              } catch (e) {
+                console.warn('Failed to clear main cash for date:', transactionDate);
+              }
+            }
+          }
+        }
+
         await axios.delete(`${API_URL}/account-details/bulk-delete`, {
           headers: { Authorization: `Bearer ${token}` },
           data: { ids },
@@ -186,8 +236,6 @@ export default function AccountDetails({ onBack }) {
       setSnack({ severity: 'success', msg: `${selectedIds.size} row(s) deleted.` });
     } catch (err) {
       setSnack({ severity: 'error', msg: 'Delete failed: ' + (err.response?.data?.error || err.message) });
-    } finally {
-      setDeleting(false);
     }
   };
 
@@ -196,42 +244,44 @@ export default function AccountDetails({ onBack }) {
     setSaving(true);
     try {
       const token = localStorage.getItem('token');
-      const updates = Object.entries(localData).map(([id, changes]) => ({
-        id: id.startsWith('new_') ? null : id,
-        isNewRow: id.startsWith('new_'),
-        changes
-      }));
+      const updates = [];
+      
+      // Validation: Ensure all modified rows have a Transaction Date
+      for (const [id, changes] of Object.entries(localData)) {
+        const originalEntry = entries.find(e => e._id === id);
+        const transactionDate = changes['Transaction Date'] ?? originalEntry?.['Transaction Date'] ?? originalEntry?.transactionDate ?? '';
+        
+        if (!transactionDate) {
+          setSnack({ severity: 'error', msg: 'Error: Transaction Date is required for all rows.' });
+          setSaving(false);
+          return;
+        }
+        
+        updates.push({
+          id: id.startsWith('new_') ? null : id,
+          isNewRow: id.startsWith('new_'),
+          changes
+        });
+      }
+
       await axios.put(`${API_URL}/account-details/bulk-update`, { updates }, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      // ── Sync / Clear "Main Cash" rows ↔ Main Cashbook ─────────────────
       const syncErrors = [];
       for (const [rowId, changes] of Object.entries(localData)) {
         const newLedger = changes['Ledger Name'];
         const originalEntry = entries.find(e => e._id === rowId);
         const oldLedger = originalEntry?.['Ledger Name'] || '';
-
-        // Resolve date from changes or original entry
-        const transactionDate =
-          changes['Transaction Date'] ??
-          originalEntry?.['Transaction Date'] ??
-          originalEntry?.transactionDate ?? '';
+        const transactionDate = changes['Transaction Date'] ?? originalEntry?.['Transaction Date'] ?? originalEntry?.transactionDate ?? '';
 
         if (!transactionDate) continue;
-
         const newIsMainCash = typeof newLedger === 'string' && newLedger.toLowerCase() === 'main cash';
         const oldWasMainCash = typeof oldLedger === 'string' && oldLedger.toLowerCase() === 'main cash';
 
         if (newIsMainCash) {
-          // ── ADDED or KEPT "Main Cash" → sync withdraw to cashbook ──────
-          const withdraw =
-            changes['Withdraw'] !== undefined
-              ? changes['Withdraw']
-              : (originalEntry?.['Withdraw'] || originalEntry?.withdraw || '');
-
+          const withdraw = changes['Withdraw'] !== undefined ? changes['Withdraw'] : (originalEntry?.['Withdraw'] || originalEntry?.withdraw || '');
           if (!withdraw || parseFloat(withdraw) <= 0) continue;
-
           try {
             await axios.post(`${API_URL}/account-details/sync-main-cash`, {
               transactionDate,
@@ -240,9 +290,7 @@ export default function AccountDetails({ onBack }) {
           } catch (syncErr) {
             syncErrors.push(syncErr.response?.data?.error || `Sync failed for ${transactionDate}: ${syncErr.message}`);
           }
-
         } else if (oldWasMainCash && newLedger !== undefined && !newIsMainCash) {
-          // ── REMOVED "Main Cash" → clear cashbook fields ─────────────────
           try {
             await axios.post(`${API_URL}/account-details/clear-main-cash`, {
               transactionDate
@@ -268,14 +316,12 @@ export default function AccountDetails({ onBack }) {
 
   const handleExport = () => exportToCsv('account_details.xls', computedRows);
 
-  // Step 1: open the date dialog
   const handleUploadBankStatementClick = () => {
     setBankFromDate('');
     setBankToDate('');
     setBankDateDialog(true);
   };
 
-  // Step 2: user confirmed dates → open file picker
   const handleDateConfirmed = () => {
     if (!bankFromDate || !bankToDate) {
       setSnack({ severity: 'warning', msg: 'Please select both From and To dates.' });
@@ -289,7 +335,6 @@ export default function AccountDetails({ onBack }) {
     setTimeout(() => fileInputRef.current?.click(), 100);
   };
 
-  // Step 3: file selected → upload with date range
   const handleBankStatementUpload = async (e) => {
     const file = e.target.files[0];
     e.target.value = '';
@@ -313,6 +358,36 @@ export default function AccountDetails({ onBack }) {
       setSnack({ severity: 'error', msg: 'Upload failed: ' + (err.response?.data?.error || err.message) });
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleRowRemittanceUpload = async (rowId, e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+
+    if (rowId.startsWith('new_')) {
+      setSnack({ severity: 'warning', msg: 'Please save the row first before uploading a remittance copy.' });
+      return;
+    }
+
+    try {
+      setRowUploading(rowId);
+      const token = localStorage.getItem('token');
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await axios.post(`${API_URL}/account-details/upload-remittance/${rowId}`, formData, {
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' }
+      });
+      if (res.data.success) {
+        setSnack({ severity: 'success', msg: 'Remittance copy uploaded for row!' });
+        fetchData(true);
+      }
+    } catch (err) {
+      setSnack({ severity: 'error', msg: 'Upload failed: ' + (err.response?.data?.error || err.message) });
+    } finally {
+      setRowUploading(null);
     }
   };
 
@@ -340,11 +415,6 @@ export default function AccountDetails({ onBack }) {
           Account Details
         </Typography>
 
-        <Box sx={{ display: 'flex', gap: 0.5 }}>
-          <Chip size="small" label="🏦 Auto from Bank" sx={{ bgcolor: '#f0fdf4', color: '#15803d', fontSize: '10px', fontWeight: 700, height: 20 }} />
-          <Chip size="small" label="✏️ 3 Manual Fields" sx={{ bgcolor: '#fff7ed', color: '#c2410c', fontSize: '10px', fontWeight: 600, height: 20 }} />
-        </Box>
-
         {dirtyCount > 0 && <Chip label={`${dirtyCount} unsaved`} size="small" color="warning" sx={{ fontWeight: 700 }} />}
         {selectedIds.size > 0 && (
           <Tooltip title="Delete selected">
@@ -367,13 +437,9 @@ export default function AccountDetails({ onBack }) {
             }}>
             {uploading ? 'Parsing...' : 'Upload Bank Statement'}
           </Button>
-          {/* Hidden file input — triggered after date selection */}
           <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={handleBankStatementUpload} />
 
-          <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={handleAddRow}
-            sx={{ fontWeight: 800, borderRadius: 2, px: 2, fontSize: '12px', bgcolor: '#0f766e', '&:hover': { bgcolor: '#115e59' } }}>
-            Add Row
-          </Button>
+
           <Tooltip title="Discard & reload">
             <IconButton size="small" onClick={() => fetchData()} sx={{ bgcolor: '#f1f5f9' }}>
               <RefreshIcon fontSize="small" />
@@ -416,7 +482,6 @@ export default function AccountDetails({ onBack }) {
         borderBottom: '2px solid #0ea5e9',
         display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap',
       }}>
-        {/* Icon + Label */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Box sx={{
             width: 30, height: 30, borderRadius: '8px',
@@ -436,10 +501,8 @@ export default function AccountDetails({ onBack }) {
           </Box>
         </Box>
 
-        {/* Separator */}
         <Box sx={{ width: '1px', height: 32, bgcolor: 'rgba(255,255,255,0.15)' }} />
 
-        {/* From Date */}
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.4 }}>
           <Typography sx={{ color: '#94a3b8', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
             From Date
@@ -449,29 +512,18 @@ export default function AccountDetails({ onBack }) {
             value={filterFrom}
             onChange={e => setFilterFrom(e.target.value)}
             style={{
-              padding: '7px 12px',
-              borderRadius: 8,
-              fontSize: '13px',
-              fontWeight: 700,
+              padding: '7px 12px', borderRadius: 8, fontSize: '13px', fontWeight: 700,
               border: filterFrom ? '2px solid #0ea5e9' : '2px solid rgba(255,255,255,0.15)',
               background: filterFrom ? 'rgba(14,165,233,0.18)' : 'rgba(255,255,255,0.07)',
-              color: filterFrom ? '#e0f2fe' : '#94a3b8',
-              outline: 'none',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-              minWidth: 145,
+              color: filterFrom ? '#e0f2fe' : '#94a3b8', outline: 'none', cursor: 'pointer', transition: 'all 0.2s', minWidth: 145,
             }}
-            onFocus={e => { e.target.style.border = '2px solid #0ea5e9'; e.target.style.boxShadow = '0 0 0 3px rgba(14,165,233,0.2)'; }}
-            onBlur={e => { e.target.style.boxShadow = 'none'; }}
           />
         </Box>
 
-        {/* Arrow */}
         <Box sx={{ display: 'flex', alignItems: 'flex-end', pb: 0.3 }}>
           <Typography sx={{ color: '#475569', fontSize: '18px', fontWeight: 900, mt: '18px' }}>→</Typography>
         </Box>
 
-        {/* To Date */}
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.4 }}>
           <Typography sx={{ color: '#94a3b8', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
             To Date
@@ -482,71 +534,33 @@ export default function AccountDetails({ onBack }) {
             min={filterFrom || undefined}
             onChange={e => setFilterTo(e.target.value)}
             style={{
-              padding: '7px 12px',
-              borderRadius: 8,
-              fontSize: '13px',
-              fontWeight: 700,
+              padding: '7px 12px', borderRadius: 8, fontSize: '13px', fontWeight: 700,
               border: filterTo ? '2px solid #0ea5e9' : '2px solid rgba(255,255,255,0.15)',
               background: filterTo ? 'rgba(14,165,233,0.18)' : 'rgba(255,255,255,0.07)',
-              color: filterTo ? '#e0f2fe' : '#94a3b8',
-              outline: 'none',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-              minWidth: 145,
+              color: filterTo ? '#e0f2fe' : '#94a3b8', outline: 'none', cursor: 'pointer', transition: 'all 0.2s', minWidth: 145,
             }}
-            onFocus={e => { e.target.style.border = '2px solid #0ea5e9'; e.target.style.boxShadow = '0 0 0 3px rgba(14,165,233,0.2)'; }}
-            onBlur={e => { e.target.style.boxShadow = 'none'; }}
           />
         </Box>
 
-        {/* Result count + Clear — only when filter active */}
         {isFiltered && (
           <>
             <Box sx={{ width: '1px', height: 32, bgcolor: 'rgba(255,255,255,0.15)', ml: 1 }} />
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, ml: 0.5 }}>
-              {/* Count badge */}
               <Box sx={{
-                display: 'flex', alignItems: 'center', gap: 0.8,
-                px: 2, py: 0.8, borderRadius: 10,
-                background: 'linear-gradient(135deg, #0ea5e9, #0284c7)',
-                boxShadow: '0 2px 10px rgba(14,165,233,0.4)'
+                display: 'flex', alignItems: 'center', gap: 0.8, px: 2, py: 0.8, borderRadius: 10,
+                background: 'linear-gradient(135deg, #0ea5e9, #0284c7)', boxShadow: '0 2px 10px rgba(14,165,233,0.4)'
               }}>
-                <Typography sx={{ color: '#fff', fontWeight: 900, fontSize: '13px' }}>
-                  {filteredRows.length}
-                </Typography>
+                <Typography sx={{ color: '#fff', fontWeight: 900, fontSize: '13px' }}>{filteredRows.length}</Typography>
                 <Typography sx={{ color: 'rgba(255,255,255,0.8)', fontWeight: 600, fontSize: '11px' }}>
                   {filteredRows.length === 1 ? 'row found' : 'rows found'}
                 </Typography>
               </Box>
-
-              {/* Clear button */}
-              <Button
-                size="small"
-                onClick={() => { setFilterFrom(''); setFilterTo(''); }}
-                sx={{
-                  fontWeight: 800, fontSize: '12px',
-                  color: '#fca5a5',
-                  border: '1.5px solid rgba(252,165,165,0.4)',
-                  borderRadius: '8px',
-                  px: 1.5, py: 0.5,
-                  textTransform: 'none',
-                  '&:hover': {
-                    bgcolor: 'rgba(239,68,68,0.15)',
-                    border: '1.5px solid #fca5a5',
-                  }
-                }}
-              >
+              <Button size="small" onClick={() => { setFilterFrom(''); setFilterTo(''); }}
+                sx={{ fontWeight: 800, fontSize: '12px', color: '#fca5a5', border: '1.5px solid rgba(252,165,165,0.4)', borderRadius: '8px', px: 1.5, py: 0.5, textTransform: 'none' }}>
                 ✕ Clear Filter
               </Button>
             </Box>
           </>
-        )}
-
-        {/* Right side hint */}
-        {!isFiltered && (
-          <Typography sx={{ ml: 'auto', color: '#334155', fontSize: '11px', fontWeight: 600, fontStyle: 'italic' }}>
-            Showing all {computedRows.length} entries
-          </Typography>
         )}
       </Box>
 
@@ -578,13 +592,6 @@ export default function AccountDetails({ onBack }) {
             </tr>
           </thead>
           <tbody>
-            {filteredRows.length === 0 && (
-              <tr>
-                <td colSpan={COLUMNS.length + 1} style={{ textAlign: 'center', padding: '40px', color: '#64748b', fontSize: '13px' }}>
-                  {isFiltered ? `No entries found between ${filterFrom || '…'} and ${filterTo || '…'}` : 'No entries.'}
-                </td>
-              </tr>
-            )}
             {filteredRows.map((row, ri) => (
               <tr key={row._id} style={{ background: selectedIds.has(row._id) ? '#f0f9ff' : ri % 2 === 0 ? '#fff' : '#f8fafc' }}>
                 <td style={{ textAlign: 'center', border: '1px solid #e2e8f0' }}>
@@ -596,44 +603,75 @@ export default function AccountDetails({ onBack }) {
                   const isFromBank = row._source === 'bank_statement';
                   return (
                     <td key={col.key} style={{ border: '1px solid #e2e8f0', padding: 0 }}>
-                      {col.key === 'Ledger Name' || col.key === 'Names' ? (
+                      {col.key === 'Remittance Copy' ? (
+                        <Box sx={{ p: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                          {rowUploading === row._id ? (
+                            <CircularProgress size={20} sx={{ color: '#0284c7' }} />
+                          ) : (row.remittanceFileUrl || localData[row._id]?.remittanceFileUrl) ? (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={() => window.open(row.remittanceFileUrl || localData[row._id]?.remittanceFileUrl, '_blank')}
+                                sx={{ fontSize: '10px', p: '2px 8px', fontWeight: 700, borderRadius: 1 }}
+                              >
+                                View
+                              </Button>
+                              <Tooltip title="Replace file">
+                                <IconButton
+                                  size="small"
+                                  component="label"
+                                  sx={{ bgcolor: '#f1f5f9', width: 24, height: 24, '&:hover': { bgcolor: '#e2e8f0' } }}
+                                >
+                                  <RefreshIcon sx={{ fontSize: '14px', color: '#64748b' }} />
+                                  <input type="file" hidden onChange={(e) => handleRowRemittanceUpload(row._id, e)} />
+                                </IconButton>
+                              </Tooltip>
+                            </Box>
+                          ) : (
+                            <Button
+                              size="small"
+                              variant="contained"
+                              component="label"
+                              sx={{
+                                fontSize: '10px', p: '2px 10px', fontWeight: 800, borderRadius: 1,
+                                bgcolor: '#0284c7', '&:hover': { bgcolor: '#0369a1' },
+                                boxShadow: 'none'
+                              }}
+                            >
+                              Upload
+                              <input type="file" hidden onChange={(e) => handleRowRemittanceUpload(row._id, e)} />
+                            </Button>
+                          )}
+                        </Box>
+                      ) : col.key === 'Ledger Name' || col.key === 'Names' ? (
                         <Autocomplete
-                          freeSolo
-                          disableClearable
                           options={col.key === 'Ledger Name' ? LEDGER_OPTIONS : NAMES_OPTIONS}
-                          value={val}
-                          onChange={(e, newVal) => handleCellEdit(row._id, col.key, newVal)}
-                          onInputChange={(e, newVal) => handleCellEdit(row._id, col.key, newVal)}
-                          PaperComponent={({ children }) => (
-                            <Box sx={{ 
-                              bgcolor: 'rgba(255, 255, 255, 0.98)', 
+                          value={val || ''}
+                          freeSolo
+                          onChange={(e, newValue) => handleCellEdit(row._id, col.key, newValue)}
+                          onInputChange={(e, newInputValue) => handleCellEdit(row._id, col.key, newInputValue)}
+                          ListboxProps={{
+                            style: {
+                              background: 'rgba(255, 255, 255, 0.98)',
                               backdropFilter: 'blur(8px)',
                               boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
                               border: '1px solid #e2e8f0',
                               borderRadius: '10px',
-                              mt: 0.5,
-                              overflow: 'hidden',
-                              '& .MuiAutocomplete-listbox': {
-                                padding: '4px',
-                                maxHeight: '300px', // Limit height for Names list
-                                '& .MuiAutocomplete-option': {
-                                  fontSize: '13px',
-                                  padding: '8px 12px',
-                                  borderRadius: '6px',
-                                  color: '#334155',
-                                  '&[aria-selected="true"]': {
-                                    bgcolor: '#eff6ff',
-                                    color: '#2563eb',
-                                    fontWeight: 600
-                                  },
-                                  '&.Mui-focused': {
-                                    bgcolor: '#f1f5f9'
-                                  }
-                                }
-                              }
+                              padding: '4px',
+                              maxHeight: '300px'
+                            }
+                          }}
+                          renderOption={(props, option) => (
+                            <li {...props} style={{
+                              fontSize: '13px',
+                              padding: '8px 12px',
+                              borderRadius: '6px',
+                              color: '#334155',
+                              backgroundColor: props['aria-selected'] === true ? '#eff6ff' : 'transparent'
                             }}>
-                              {children}
-                            </Box>
+                              {option}
+                            </li>
                           )}
                           renderInput={(params) => (
                             <TextField
@@ -643,8 +681,8 @@ export default function AccountDetails({ onBack }) {
                               InputProps={{
                                 ...params.InputProps,
                                 disableUnderline: true,
-                                style: { 
-                                  fontSize: '12px', 
+                                style: {
+                                  fontSize: '12px',
                                   padding: '4px 8px',
                                   fontWeight: val ? 700 : 400,
                                   color: '#1e293b'
@@ -655,7 +693,7 @@ export default function AccountDetails({ onBack }) {
                           sx={{
                             width: '100%',
                             '& .MuiAutocomplete-inputRoot': { padding: 0 },
-                            '& .MuiAutocomplete-input': { 
+                            '& .MuiAutocomplete-input': {
                               padding: '8px 8px !important',
                               transition: 'background 0.2s',
                               '&:hover': { bgcolor: '#f8fafc' },
@@ -754,8 +792,10 @@ export default function AccountDetails({ onBack }) {
                 {uploadedDates.map(d => (
                   <Chip
                     key={d} label={d} size="small"
-                    sx={{ bgcolor: 'rgba(239,68,68,0.18)', color: '#fca5a5', fontSize: '10px', fontWeight: 700,
-                      border: '1px solid rgba(239,68,68,0.35)', height: 20 }}
+                    sx={{
+                      bgcolor: 'rgba(239,68,68,0.18)', color: '#fca5a5', fontSize: '10px', fontWeight: 700,
+                      border: '1px solid rgba(239,68,68,0.35)', height: 20
+                    }}
                   />
                 ))}
               </Box>

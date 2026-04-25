@@ -112,6 +112,38 @@ router.post("/resync-site-cash", auth, async (req, res) => {
   }
 });
 
+// ── GET /cement-register/next-batch-serial ───────────────────────────────────
+router.get("/next-batch-serial", auth, async (req, res) => {
+  try {
+    const col = getCollection();
+    const dateQuery = req.query.date; // Optional bill date
+    
+    // Calculate FY
+    const dObj = dateQuery ? new Date(dateQuery) : new Date();
+    const year = dObj.getFullYear();
+    const month = dObj.getMonth() + 1;
+    let currentFy = (month >= 4) ? `${String(year).slice(-2)}-${String(year+1).slice(-2)}` : `${String(year-1).slice(-2)}-${String(year).slice(-2)}`;
+
+    const existing = await col.find({"BILL NO": { $regex: /\d{2}-\d{2}\/\d+$/ }}).toArray();
+    let maxSerial = 0;
+    
+    for (const row of existing) {
+       const match = String(row['BILL NO']).match(/(\d{2}-\d{2})\/(\d+)$/);
+       if (match) {
+         const serial = parseInt(match[2], 10);
+         if (match[1] === currentFy && serial > maxSerial) {
+           maxSerial = serial;
+         }
+       }
+    }
+    
+    const autoBatchSerial = `${currentFy}/${String(maxSerial + 1).padStart(4, '0')}`;
+    res.json({ success: true, nextSerial: autoBatchSerial });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 router.get("/:id", async (req, res) => {
   try {
     const col = getCollection();
@@ -164,6 +196,7 @@ router.put("/bulk-update", auth, async (req, res) => {
     if (!updates || !Array.isArray(updates)) {
       return res.status(400).json({ success: false, error: "Invalid updates payload" });
     }
+
     const io = getIO();
     const bulkOps = updates.map(u => ({
       updateOne: {

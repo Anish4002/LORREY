@@ -133,8 +133,9 @@ const OPENING_KEYS = ['P_OPENING', 'S_OPENING', 'O_OPENING'];
 
 export default function MainCashbook({ onBack }) {
   const now = new Date();
+  const currentFyStart = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
   const [selMonth, setSelMonth] = useState(now.getMonth() + 1); // 1-based
-  const [selYear, setSelYear] = useState(now.getFullYear());
+  const [selYear, setSelYear] = useState(`${currentFyStart}-${currentFyStart + 1}`);
 
   const [entries, setEntries] = useState([]);
   const [localData, setLocalData] = useState({});
@@ -151,9 +152,9 @@ export default function MainCashbook({ onBack }) {
   const allSelected = entries.length > 0 && selectedIds.size === entries.length;
   const someSelected = selectedIds.size > 0 && !allSelected;
 
-  // Year options: current year ± 3
+  // Year options
   const yearOptions = [];
-  for (let y = now.getFullYear() - 2; y <= now.getFullYear() + 1; y++) yearOptions.push(y);
+  for (let y = currentFyStart - 2; y <= currentFyStart + 1; y++) yearOptions.push(`${y}-${y + 1}`);
 
   const toggleSelect = (id) => setSelectedIds(prev => {
     const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s;
@@ -166,9 +167,11 @@ export default function MainCashbook({ onBack }) {
   const token = () => localStorage.getItem('token');
 
   // Fetch previous month's last closing balances
-  const fetchPrevClosing = useCallback(async (month, year) => {
+  const fetchPrevClosing = useCallback(async (month, yearStr) => {
     try {
-      let prevMonth = month - 1, prevYear = year;
+      const fyStartYear = parseInt(String(yearStr).split('-')[0], 10);
+      const calendarYear = month >= 4 ? fyStartYear : fyStartYear + 1;
+      let prevMonth = month - 1, prevYear = calendarYear;
       if (prevMonth < 1) { prevMonth = 12; prevYear--; }
       const res = await axios.get(`${API_URL}/main-cashbook/month-end`, {
         params: { month: prevMonth, year: prevYear },
@@ -182,11 +185,13 @@ export default function MainCashbook({ onBack }) {
     } catch { /* ignore */ }
   }, []);
 
-  const fetchData = useCallback(async (month, year, silent = false) => {
+  const fetchData = useCallback(async (month, yearStr, silent = false) => {
     try {
       if (!silent) setLoading(true);
+      const fyStartYear = parseInt(String(yearStr).split('-')[0], 10);
+      const calendarYear = month >= 4 ? fyStartYear : fyStartYear + 1;
       const res = await axios.get(`${API_URL}/main-cashbook`, {
-        params: { month, year },
+        params: { month, year: calendarYear },
         headers: { Authorization: `Bearer ${token()}` }
       });
       if (res.data.success) {
@@ -296,7 +301,9 @@ export default function MainCashbook({ onBack }) {
   const handleAddRow = async () => {
     try {
       const today = new Date().toLocaleDateString('en-IN').replace(/\//g, '-');
-      const newEntry = { DATE: today, month: selMonth, year: selYear };
+      const fyStartYear = parseInt(String(selYear).split('-')[0], 10);
+      const calendarYear = selMonth >= 4 ? fyStartYear : fyStartYear + 1;
+      const newEntry = { DATE: today, month: selMonth, year: calendarYear };
       const res = await axios.post(`${API_URL}/main-cashbook`, newEntry, {
         headers: { Authorization: `Bearer ${token()}` }
       });
@@ -344,9 +351,11 @@ export default function MainCashbook({ onBack }) {
       setLocalData({});
 
       // 2. Upsert monthly summary (computed from latest computedRows)
+      const fyStartYear = parseInt(String(selYear).split('-')[0], 10);
+      const calendarYear = selMonth >= 4 ? fyStartYear : fyStartYear + 1;
       const summaryPayload = {
-        month: selMonth, year: selYear,
-        label: `${MONTH_NAMES[selMonth - 1]} ${selYear}`,
+        month: selMonth, year: calendarYear,
+        label: `${MONTH_NAMES[selMonth - 1]} ${calendarYear}`,
         ...monthSums
       };
       await axios.put(`${API_URL}/main-cashbook/monthly-summary`, summaryPayload, {
@@ -402,15 +411,15 @@ export default function MainCashbook({ onBack }) {
         </FormControl>
 
         {/* Year selector */}
-        <FormControl size="small" sx={{ minWidth: 90 }}>
-          <InputLabel sx={{ fontSize: 12 }}>Year</InputLabel>
-          <Select value={selYear} label="Year" onChange={e => setSelYear(e.target.value)}
+        <FormControl size="small" sx={{ minWidth: 100 }}>
+          <InputLabel sx={{ fontSize: 12 }}>Financial Year</InputLabel>
+          <Select value={selYear} label="Financial Year" onChange={e => setSelYear(e.target.value)}
             sx={{ fontSize: 12, fontWeight: 700 }}>
             {yearOptions.map(y => <MenuItem key={y} value={y} sx={{ fontSize: 12 }}>{y}</MenuItem>)}
           </Select>
         </FormControl>
 
-        <Chip label={`${MONTH_NAMES[selMonth - 1]} ${selYear}`}
+        <Chip label={`${MONTH_NAMES[selMonth - 1]} ${selMonth >= 4 ? selYear.split('-')[0] : parseInt(selYear.split('-')[0],10)+1}`}
           size="small" sx={{ fontWeight: 800, bgcolor: '#f0e6ff', color: '#6d28d9' }} />
 
         {dirtyCount > 0 && <Chip label={`${dirtyCount} unsaved`} size="small" color="warning" sx={{ fontWeight: 700 }} />}

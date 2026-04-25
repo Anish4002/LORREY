@@ -37,21 +37,49 @@ const MONTH_NAMES = [
   'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'
 ];
 
+// Normalize legacy site names to canonical values
+function normalizeSite(site) {
+  if (!site) return '';
+  const s = String(site).trim().toUpperCase();
+  if (s === 'NVCL') return 'NVCL';
+  if (s === 'NVL') return 'NVL';
+  return site.trim();
+}
+
 router.get('/data', async (req, res) => {
   try {
-    const allCement = await getCementCol().find({}).toArray();
-    
-    // Group by Invoice Number (Try GCN NO, then BILL NO, then INVOICE NO)
-    const aggregated = {};
+    // ── Run all 3 DB reads in PARALLEL ─────────────────────────────
+    const CEMENT_PROJECTION = {
+      'GCN NO': 1, 'BILL NO': 1, 'INVOICE NO': 1, 'BILLING': 1,
+      'LOADING DT': 1, 'LOADING DATE': 1,
+      'SITE': 1,
+      'BILLING ER 95%': 1, 'BILLING @ 95% (PARTY PAYABLE)': 1,
+      'AMOUNT': 1, 'Billing Amount': 1,
+      _id: 0
+    };
 
-    allCement.forEach(row => {
-      // Find the invoice format like NVCL/25-26 or DAC/25-26
-      let invNo = row['GCN NO'] || row['BILL NO'] || row['INVOICE NO'] || row['BILLING'];
-      if (!invNo) return;
+    const [allCement, rowOverrides, payments] = await Promise.all([
+      getCementCol().find({}, { projection: CEMENT_PROJECTION }).toArray(),
+      FinancialYearRow.find({}).lean(),
+      FinancialYearPayment.find({}).lean()
+    ]);
+
+    // ── Aggregate cement rows by invoice number AND site ──────────────
+    const aggregated = {};
+    for (const row of allCement) {
+      let invNo = row['BILL NO'];
+      if (!invNo) continue;
       invNo = String(invNo).trim();
 
-      if (!aggregated[invNo]) {
-        let invDate = row['LOADING DT'] || row['LOADING DATE'] || '';
+      const rawSite = normalizeSite(row['SITE']);
+      if (rawSite !== 'NVCL' && rawSite !== 'NVL') continue;
+
+      const prefix = rawSite === 'NVCL' ? 'NVCL/' : 'DAC/';
+      const cleanInvNo = invNo.replace(/^(DAC|NVCL)\//i, '');
+      const finalInvNo = `${prefix}${cleanInvNo}`;
+
+      if (!aggregated[finalInvNo]) {
+        const invDate = row['BILL DATE'] || row['LOADING DT'] || row['LOADING DATE'] || '';
         let monthStr = '';
         const dObj = parseDate(invDate);
         if (dObj) {
@@ -59,58 +87,48 @@ router.get('/data', async (req, res) => {
           const yy = String(dObj.getFullYear()).slice(-2);
           monthStr = `${MONTH_NAMES[m]} '${yy}`;
         }
-
-        aggregated[invNo] = {
-          invoiceDate: invDate,
-          invoiceNumber: invNo,
-          month: monthStr,
-          site: row['SITE'] || '',
-          amount: 0
-        };
+        aggregated[finalInvNo] = { invoiceDate: invDate, invoiceNumber: finalInvNo, month: monthStr, site: rawSite, amount: 0 };
       }
 
-      // Sum Amount (Billing ER 95% or Amount)
-      const amt = parseFloat(row['BILLING ER 95%']) || parseFloat(row['BILLING @ 95% (PARTY PAYABLE)']) || parseFloat(row['AMOUNT']) || parseFloat(row['Billing Amount']) || 0;
-      aggregated[invNo].amount += amt;
-    });
+      const amt =
+        parseFloat(row['BILLING AMOUNT']) ||
+        parseFloat(row['Billing Amount']) ||
+        parseFloat(row['BILLING ER 95%']) ||
+        parseFloat(row['AMOUNT']) || 0;
+      aggregated[finalInvNo].amount += amt;
+    }
 
-    const rows = Object.values(aggregated);
-
-    // Fetch manual row mappings (BILL dropdowns & Overrides)
-    const rowOverrides = await FinancialYearRow.find({});
+    // ── Merge overrides (O(1) map lookup) ──────────────────────────
     const rowMap = {};
-    rowOverrides.forEach(r => { rowMap[r.billNo] = r; });
+    for (const r of rowOverrides) rowMap[r.billNo] = r;
 
-    // Build final table rows
-    const finalRows = rows.map(r => {
-      const override = rowMap[r.invoiceNumber] || {};
+    const finalRows = Object.values(aggregated).map(r => {
+      const ov = rowMap[r.invoiceNumber] || {};
+      if (ov.hidden) return null; // soft-deleted
       return {
         ...r,
-        billType: override.billType || 'FREIGHT',
-        invoiceDate: override.editedInvoiceDate !== undefined ? override.editedInvoiceDate : r.invoiceDate,
-        displayInvoiceNumber: override.editedInvoiceNumber !== undefined ? override.editedInvoiceNumber : r.invoiceNumber,
-        month: override.editedMonth !== undefined ? override.editedMonth : r.month,
-        site: override.editedSite !== undefined ? override.editedSite : r.site,
-        amount: override.editedAmount !== undefined ? override.editedAmount : r.amount
+        billType:              ov.billType              ?? 'FREIGHT',
+        invoiceDate:           ov.editedInvoiceDate     ?? r.invoiceDate,
+        displayInvoiceNumber:  ov.editedInvoiceNumber   ?? r.invoiceNumber,
+        month:                 ov.editedMonth           ?? r.month,
+        site:                  normalizeSite(ov.editedSite ?? r.site),
+        amount:                ov.editedAmount          ?? r.amount,
       };
-    });
-
-    // Fetch grouped payments
-    const payments = await FinancialYearPayment.find({});
+    }).filter(Boolean);
 
     res.json({ rows: finalRows, payments });
   } catch (err) {
-    console.error(err);
+    console.error('[FYDetails] /data error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
 router.post('/save-group', async (req, res) => {
   try {
-    const { id, billNos, paymentAmount, paymentDate, referenceNo, debitAmount, remarks } = req.body;
+    const { id, billNos, paymentAmount, paymentDate, referenceNo, debitAmount, remarks, tdsProvision } = req.body;
     await FinancialYearPayment.findOneAndUpdate(
       { id },
-      { billNos, paymentAmount, paymentDate, referenceNo, debitAmount, remarks },
+      { billNos, paymentAmount, paymentDate, referenceNo, debitAmount, remarks, tdsProvision },
       { upsert: true, returnDocument: 'after' }
     );
     res.json({ success: true });
@@ -119,6 +137,28 @@ router.post('/save-group', async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
+
+// Soft-delete: marks selected invoice numbers as hidden
+router.post('/delete-rows', async (req, res) => {
+  try {
+    const { billNos } = req.body; // array of invoiceNumbers to delete
+    if (!Array.isArray(billNos) || billNos.length === 0)
+      return res.status(400).json({ error: 'No bill numbers provided' });
+
+    await Promise.all(billNos.map(billNo =>
+      FinancialYearRow.findOneAndUpdate(
+        { billNo },
+        { $set: { hidden: true } },
+        { upsert: true }
+      )
+    ));
+    res.json({ success: true, deleted: billNos.length });
+  } catch (err) {
+    console.error('[FYDetails] /delete-rows error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 
 router.post('/upload-proof', paymentProofUpload.single('proof'), async (req, res) => {
   try {

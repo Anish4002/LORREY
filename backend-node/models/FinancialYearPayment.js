@@ -8,6 +8,7 @@ const fyPaymentSchema = new mongoose.Schema({
   referenceNo: { type: String, default: '' },
   debitAmount: { type: Number, default: 0 },
   remarks: { type: String, default: '' },
+  tdsProvision: { type: Number, default: 0 },
   paymentProofUrl: { type: String, default: '' }
 }, { timestamps: true });
 

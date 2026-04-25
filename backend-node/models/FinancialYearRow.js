@@ -7,7 +7,8 @@ const fyRowSchema = new mongoose.Schema({
   editedInvoiceNumber: { type: String },
   editedMonth: { type: String },
   editedSite: { type: String },
-  editedAmount: { type: Number }
+  editedAmount: { type: Number },
+  hidden: { type: Boolean, default: false }
 }, { timestamps: true });
 
 module.exports = mongoose.model('FinancialYearRow', fyRowSchema);

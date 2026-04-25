@@ -97,10 +97,11 @@ export default function PumpPaymentDetails({ onBack, lockedPump = null }) {
   const effectiveLockedPump = autoPump || lockedPump;
 
   const now = new Date();
+  const currentFyStart = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
   const currentDay = now.getDate();
   const [selPump, setSelPump] = useState(effectiveLockedPump || '');
   const [selMonth, setSelMonth] = useState(now.getMonth() + 1);
-  const [selYear, setSelYear] = useState(now.getFullYear());
+  const [selYear, setSelYear] = useState(`${currentFyStart}-${currentFyStart + 1}`);
   const [selPeriod, setSelPeriod] = useState(currentDay <= 10 ? 1 : currentDay <= 20 ? 2 : 3);
   const [hsdBillNo, setHsdBillNo] = useState('');
 
@@ -129,7 +130,7 @@ export default function PumpPaymentDetails({ onBack, lockedPump = null }) {
   const [pumpTab, setPumpTab] = useState('today'); // 'today', 'expired' or 'all'
 
   const yearOptions = [];
-  for (let y = now.getFullYear() - 2; y <= now.getFullYear() + 1; y++) yearOptions.push(y);
+  for (let y = currentFyStart - 2; y <= currentFyStart + 1; y++) yearOptions.push(`${y}-${y + 1}`);
 
   const token = () => localStorage.getItem('token');
   const dirtyCount = Object.keys(localEdits).length;
@@ -193,8 +194,10 @@ export default function PumpPaymentDetails({ onBack, lockedPump = null }) {
     if (!selPump) return;
     setLoading(true);
     setLocalEdits({});
+    const fyStartYear = parseInt(selYear.split('-')[0], 10);
+    const calendarYear = selMonth >= 4 ? fyStartYear : fyStartYear + 1;
     try {
-      const params = { pumpName: selPump, month: selMonth, year: selYear, period: selPeriod };
+      const params = { pumpName: selPump, month: selMonth, year: calendarYear, period: selPeriod };
 
       // Debug: log what pump names and sample entries look like in DB
       axios.get(`${API_URL}/pump-payment/debug`, {
@@ -257,9 +260,11 @@ export default function PumpPaymentDetails({ onBack, lockedPump = null }) {
   // ── Fetch notification status for current period ────────────────────────────────
   const fetchNotificationStatus = useCallback(async () => {
     if (!selPump) return;
+    const fyStartYear = parseInt(selYear.split('-')[0], 10);
+    const calendarYear = selMonth >= 4 ? fyStartYear : fyStartYear + 1;
     try {
       const { data } = await axios.get(`${API_URL}/pump-payment/notification-status`, {
-        params: { pumpName: selPump, month: selMonth, year: selYear, period: selPeriod },
+        params: { pumpName: selPump, month: selMonth, year: calendarYear, period: selPeriod },
         headers: { Authorization: `Bearer ${token()}` }
       });
       setIsNotified(data.notified || false);
@@ -271,9 +276,11 @@ export default function PumpPaymentDetails({ onBack, lockedPump = null }) {
   // ── Fetch period-level bulk payment status ───────────────────────────────────────
   const fetchPeriodPaymentStatus = useCallback(async () => {
     if (!selPump) return;
+    const fyStartYear = parseInt(selYear.split('-')[0], 10);
+    const calendarYear = selMonth >= 4 ? fyStartYear : fyStartYear + 1;
     try {
       const { data } = await axios.get(`${API_URL}/pump-payment/period-payment-status`, {
-        params: { pumpName: selPump, month: selMonth, year: selYear, period: selPeriod },
+        params: { pumpName: selPump, month: selMonth, year: calendarYear, period: selPeriod },
         headers: { Authorization: `Bearer ${token()}` }
       });
       if (data.success) {
@@ -302,7 +309,9 @@ export default function PumpPaymentDetails({ onBack, lockedPump = null }) {
   useEffect(() => {
     socket.on('cementUpdates', () => fetchData());
     socket.on('paymentNotification', (msg) => {
-      if (msg.pumpName === selPump && msg.month === selMonth && msg.year === selYear && msg.period === selPeriod) {
+      const fyStartYear = parseInt(selYear.split('-')[0], 10);
+      const calendarYear = selMonth >= 4 ? fyStartYear : fyStartYear + 1;
+      if (msg.pumpName === selPump && msg.month === selMonth && msg.year === calendarYear && msg.period === selPeriod) {
         setIsNotified(true);
       }
       if (isOfficeAdmin) {
@@ -316,7 +325,9 @@ export default function PumpPaymentDetails({ onBack, lockedPump = null }) {
     });
     // Listen for period payment updates (pump admin sees paid status live)
     socket.on('periodPaymentUpdated', (msg) => {
-      if (msg.pumpName === selPump && msg.month === selMonth && msg.year === selYear && msg.period === selPeriod) {
+      const fyStartYear = parseInt(selYear.split('-')[0], 10);
+      const calendarYear = selMonth >= 4 ? fyStartYear : fyStartYear + 1;
+      if (msg.pumpName === selPump && msg.month === selMonth && msg.year === calendarYear && msg.period === selPeriod) {
         setPeriodPaymentStatus(msg.status);
         setPeriodProofUrls(msg.proofUrls || []);
       }
@@ -336,9 +347,11 @@ export default function PumpPaymentDetails({ onBack, lockedPump = null }) {
   const handleNotify = async () => {
     if (!isPumpAdmin || isNotified || notifying) return;
     setNotifying(true);
+    const fyStartYear = parseInt(selYear.split('-')[0], 10);
+    const calendarYear = selMonth >= 4 ? fyStartYear : fyStartYear + 1;
     try {
       await axios.post(`${API_URL}/pump-payment/notify`, {
-        pumpName: selPump, month: selMonth, year: selYear, period: selPeriod
+        pumpName: selPump, month: selMonth, year: calendarYear, period: selPeriod
       }, { headers: { Authorization: `Bearer ${token()}` } });
       setIsNotified(true);
       setSnack({ severity: 'success', msg: 'Notification sent to Office Admin!' });
@@ -364,13 +377,15 @@ export default function PumpPaymentDetails({ onBack, lockedPump = null }) {
       if (uploaded.length === 0) return;
       const newUrls = [...periodProofUrls, ...uploaded];
       setPeriodProofUrls(newUrls);
+      const fyStartYear = parseInt(selYear.split('-')[0], 10);
+      const calendarYear = selMonth >= 4 ? fyStartYear : fyStartYear + 1;
       await axios.put(`${API_URL}/pump-payment/save-period-payment`, {
-        pumpName: selPump, month: selMonth, year: selYear, period: selPeriod,
+        pumpName: selPump, month: selMonth, year: calendarYear, period: selPeriod,
         status: periodPaymentStatus, proofUrls: newUrls
       }, { headers: { Authorization: `Bearer ${token()}` } });
       if (periodPaymentStatus === 'Paid') {
         setAllNotifications(prev => prev.filter(n =>
-          !(n.pumpName === selPump && n.month === selMonth && n.year === selYear && n.period === selPeriod)
+          !(n.pumpName === selPump && n.month === selMonth && n.year === calendarYear && n.period === selPeriod)
         ));
         setSnack({ severity: 'success', msg: `${uploaded.length} proof file(s) uploaded — notification cleared!` });
       } else {
@@ -384,9 +399,11 @@ export default function PumpPaymentDetails({ onBack, lockedPump = null }) {
   // ── Remove a single proof URL (Office Admin only) ──────────────────────────
   const handleRemovePeriodProof = async (urlToRemove) => {
     if (!isOfficeAdmin) return;
+    const fyStartYear = parseInt(selYear.split('-')[0], 10);
+    const calendarYear = selMonth >= 4 ? fyStartYear : fyStartYear + 1;
     try {
       const { data } = await axios.put(`${API_URL}/pump-payment/remove-period-proof`, {
-        pumpName: selPump, month: selMonth, year: selYear, period: selPeriod, urlToRemove
+        pumpName: selPump, month: selMonth, year: calendarYear, period: selPeriod, urlToRemove
       }, { headers: { Authorization: `Bearer ${token()}` } });
       if (data.success) {
         setPeriodProofUrls(data.proofUrls || []);
@@ -424,9 +441,11 @@ export default function PumpPaymentDetails({ onBack, lockedPump = null }) {
       setSnack({ severity: 'warning', msg: '⚠️ Upload at least one payment receipt to confirm Paid status' });
       return;
     }
+    const fyStartYear = parseInt(selYear.split('-')[0], 10);
+    const calendarYear = selMonth >= 4 ? fyStartYear : fyStartYear + 1;
     try {
       await axios.put(`${API_URL}/pump-payment/save-period-payment`, {
-        pumpName: selPump, month: selMonth, year: selYear, period: selPeriod,
+        pumpName: selPump, month: selMonth, year: calendarYear, period: selPeriod,
         status: newStatus, proofUrls: periodProofUrls
       }, { headers: { Authorization: `Bearer ${token()}` } });
       if (newStatus === 'Unpaid') {
@@ -547,8 +566,10 @@ export default function PumpPaymentDetails({ onBack, lockedPump = null }) {
         'PAYMENT PROOF URL': r['PAYMENT PROOF URL'],
         'VERIFICATION STATUS': r['VERIFICATION STATUS'],
       }));
+      const fyStartYear = parseInt(selYear.split('-')[0], 10);
+      const calendarYear = selMonth >= 4 ? fyStartYear : fyStartYear + 1;
       await axios.put(`${API_URL}/pump-payment/save-period`, {
-        pumpName: selPump, month: selMonth, year: selYear,
+        pumpName: selPump, month: selMonth, year: calendarYear,
         period: selPeriod, hsdBillNo: '', rows: saveRows
       }, { headers: { Authorization: `Bearer ${token()}` } });
 
@@ -591,9 +612,11 @@ export default function PumpPaymentDetails({ onBack, lockedPump = null }) {
 
   // ── CSV export ─────────────────────────────────────────────────────────
   const handleExport = () => {
-    const { startDay, endDay } = getPeriodRange(selPeriod, selMonth, selYear);
-    const startFmt = `${String(startDay).padStart(2, '0')}.${String(selMonth).padStart(2, '0')}.${String(selYear).slice(2)}`;
-    const endFmt = `${String(endDay).padStart(2, '0')}.${String(selMonth).padStart(2, '0')}.${String(selYear).slice(2)}`;
+    const fyStartYear = parseInt(selYear.split('-')[0], 10);
+    const calendarYear = selMonth >= 4 ? fyStartYear : fyStartYear + 1;
+    const { startDay, endDay } = getPeriodRange(selPeriod, selMonth, calendarYear);
+    const startFmt = `${String(startDay).padStart(2, '0')}.${String(selMonth).padStart(2, '0')}.${String(calendarYear).slice(2)}`;
+    const endFmt = `${String(endDay).padStart(2, '0')}.${String(selMonth).padStart(2, '0')}.${String(calendarYear).slice(2)}`;
     const title = `${selPump} (${startFmt}-${endFmt}) -${hsdBillNo}`;
     const exportRows = computedRows.map(r => ({
       'LOADING DT': r['LOADING DATE'],
@@ -619,9 +642,11 @@ export default function PumpPaymentDetails({ onBack, lockedPump = null }) {
   };
 
   const billTitle = useMemo(() => {
-    const { startDay, endDay } = getPeriodRange(selPeriod, selMonth, selYear);
-    const s = `${String(startDay).padStart(2, '0')}.${String(selMonth).padStart(2, '0')}.${String(selYear).slice(2)}`;
-    const e = `${String(endDay).padStart(2, '0')}.${String(selMonth).padStart(2, '0')}.${String(selYear).slice(2)}`;
+    const fyStartYear = parseInt(selYear.split('-')[0], 10);
+    const calendarYear = selMonth >= 4 ? fyStartYear : fyStartYear + 1;
+    const { startDay, endDay } = getPeriodRange(selPeriod, selMonth, calendarYear);
+    const s = `${String(startDay).padStart(2, '0')}.${String(selMonth).padStart(2, '0')}.${String(calendarYear).slice(2)}`;
+    const e = `${String(endDay).padStart(2, '0')}.${String(selMonth).padStart(2, '0')}.${String(calendarYear).slice(2)}`;
     return `${selPump || '—'} ( ${s} - ${e} )${hsdBillNo ? ' -' + hsdBillNo : ''}`;
   }, [selPump, selMonth, selYear, selPeriod, hsdBillNo]);
 
@@ -708,10 +733,9 @@ export default function PumpPaymentDetails({ onBack, lockedPump = null }) {
             </Select>
           </FormControl>
 
-          {/* Year */}
-          <FormControl size="small" sx={{ minWidth: 85 }}>
-            <InputLabel sx={{ fontSize: 12 }}>Year</InputLabel>
-            <Select value={selYear} label="Year" onChange={e => setSelYear(e.target.value)} sx={{ fontSize: 12, fontWeight: 700 }}>
+          <FormControl size="small" sx={{ minWidth: 100 }}>
+            <InputLabel sx={{ fontSize: 12 }}>Financial Year</InputLabel>
+            <Select value={selYear} label="Financial Year" onChange={e => setSelYear(e.target.value)} sx={{ fontSize: 12, fontWeight: 700 }}>
               {yearOptions.map(y => <MenuItem key={y} value={y} sx={{ fontSize: 12 }}>{y}</MenuItem>)}
             </Select>
           </FormControl>

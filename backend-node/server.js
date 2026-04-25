@@ -43,9 +43,9 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Async request logger — non-blocking, does NOT stall the event loop
+// Async request logger — writes OUTSIDE backend-node/ so nodemon never watches it
 const _reqLogStream = require('fs').createWriteStream(
-  require('path').join(__dirname, 'request_log.txt'), { flags: 'a' }
+  require('path').join(__dirname, '..', 'request_log.txt'), { flags: 'a' }
 );
 app.use((req, _res, next) => {
   _reqLogStream.write(`[${new Date().toISOString()}] ${req.method} ${req.url}\n`);
@@ -159,9 +159,18 @@ app.post("/invoice/gcn-softcopy", auth, gcnUpload.single("softcopy"), async (req
   res.json({ message: "GCN softcopy saved successfully", url: req.file.location });
 });
 
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log("Connected to MongoDB Atlas"))
-  .catch(err => console.error("MongoDB connection error:", err));
+const connectDB = async () => {
+  try {
+    await mongoose.connect(process.env.MONGO_URI);
+    console.log("Connected to MongoDB Atlas");
+  } catch (err) {
+    console.error("MongoDB connection error:", err.message);
+    console.log("Retrying MongoDB connection in 5 seconds...");
+    setTimeout(connectDB, 5000);
+  }
+};
+connectDB();
+
 
 app.use("/invoice", auth, invoiceRoutes);
 

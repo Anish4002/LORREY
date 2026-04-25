@@ -1028,10 +1028,10 @@ const Dashboard = ({ onUploadNew, onOpenLorrySlip, onOpenFuelSlip, onOpenCementR
                                     </Box>
                                     <Box>
                                         <Typography variant="subtitle2" fontWeight={900} sx={{ letterSpacing: 0.5 }}>
-                                            FINANCIAL YEAR DETAILS
+                                            BILL REGISTER
                                         </Typography>
                                         <Typography variant="caption" sx={{ opacity: 0.6 }}>
-                                            FY 25-26 Payment Ledger
+                                            Payment Ledger
                                         </Typography>
                                     </Box>
                                 </Box>

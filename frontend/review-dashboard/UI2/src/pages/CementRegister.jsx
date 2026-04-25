@@ -33,8 +33,8 @@ export const COLUMNS = [
   { key: 'SL NO', label: 'SL NO', width: 60, type: 'auto', group: 'id', sticky: true },
   { key: 'LOADING DT', label: 'LOADING DT', width: 120, type: 'auto', group: 'id' },
   { key: 'RECEIVING DATE', label: 'RECEIVING\nDATE', width: 120, type: 'manual', group: 'id', isDate: true },
-  { key: 'BILL NO', label: 'BILL NO', width: 160, type: 'manual', group: 'id', hasAttach: 'bill_pdf' },
-  { key: 'BILL DATE', label: 'BILL DATE', width: 120, type: 'manual', group: 'id', isDate: true },
+  { key: 'BILL NO', label: 'BILL NO', width: 160, type: 'auto', group: 'id', hasAttach: 'bill_pdf_auto' },
+  { key: 'BILL DATE', label: 'BILL DATE', width: 120, type: 'auto', group: 'id' },
   { key: 'By Portal', label: 'BY PORTAL', width: 120, type: 'dropdown', options: ['By Portal', ''], group: 'id' },
   { key: 'SITE', label: 'SITE', width: 190, type: 'auto', group: 'id' },
   { key: 'VEHICLE NUMBER', label: 'VEHICLE NUMBER', width: 145, type: 'auto', group: 'id' },
@@ -409,12 +409,8 @@ export default function CementRegister({ onBack }) {
   const handleExport = () => exportToCsv('cement_register.xls', computedRows);
 
   // ── Apply Bulk Bill to selected rows (draft only) ─────────────────────────
-  const handleBulkBillApply = () => {
-    const { billNo, billDate } = bulkBillInput;
-    if (!billNo) {
-      setSnack({ severity: 'error', msg: 'Please enter a Bill Number' });
-      return;
-    }
+  const handleBulkBillApply = async () => {
+    const { billDate } = bulkBillInput;
     const ids = [...selectedIds];
     if (ids.length === 0) {
       setSnack({ severity: 'warning', msg: 'No rows selected for billing' });
@@ -425,20 +421,39 @@ export default function CementRegister({ onBack }) {
       return;
     }
 
-    setLocalData(prev => {
-      const next = { ...prev };
-      ids.forEach(id => {
-        next[id] = {
-          ...(next[id] || {}),
-          'BILL NO': billNo,
-          'BILL DATE': billDate
-        };
+    try {
+      const token = localStorage.getItem('token');
+      const res = await axios.get(`${API_URL}/cement-register/next-batch-serial?date=${billDate || ''}`, {
+        headers: { Authorization: `Bearer ${token}` }
       });
-      return next;
-    });
-    setIsBillingMode(false);
-    setSelectedIds(new Set());
-    setSnack({ severity: 'success', msg: `Drafted Bill No: ${billNo} for ${ids.length} rows. Remember to click SAVE!` });
+      const autoBatchSerial = res.data.nextSerial; // e.g. "25-26/0001"
+
+      setLocalData(prev => {
+        const next = { ...prev };
+        ids.forEach(id => {
+          const row = computedRows.find(r => r._id === id);
+          const rawSite = String(row?.['SITE'] || '').trim().toUpperCase();
+          const prefix = rawSite === 'NVL' ? 'DAC/' : 'NVCL/';
+          
+          const formattedBillDate = billDate ? (() => {
+            const [y, m, d] = billDate.split('-');
+            return `${d}/${m}/${y}`;
+          })() : '';
+
+          next[id] = {
+            ...(next[id] || {}),
+            'BILL NO': `${prefix}${autoBatchSerial}`,
+            'BILL DATE': formattedBillDate
+          };
+        });
+        return next;
+      });
+      setIsBillingMode(false);
+      setSelectedIds(new Set());
+      setSnack({ severity: 'success', msg: `Drafted Auto-Generated Bill for ${ids.length} rows. Click SAVE to finalize!` });
+    } catch (err) {
+      setSnack({ severity: 'error', msg: 'Failed to generate auto serial.' });
+    }
   };
 
 
@@ -565,13 +580,7 @@ export default function CementRegister({ onBack }) {
               display: 'flex', alignItems: 'center', gap: 1.5, 
               bgcolor: '#f8fafc', px: 2, py: 0.75, borderRadius: '12px', border: '1px solid #e2e8f0' 
             }}>
-              <Typography sx={{ fontSize: '0.7rem', fontWeight: 800, color: '#475569', letterSpacing: '0.5px' }}>BILLING STAGE</Typography>
-              <input 
-                type="text" placeholder="Bill No" 
-                value={bulkBillInput.billNo}
-                onChange={e => setBulkBillInput(prev => ({ ...prev, billNo: e.target.value }))}
-                style={{ width: 140, padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', outline: 'none' }}
-              />
+              <Typography sx={{ fontSize: '0.7rem', fontWeight: 800, color: '#475569', letterSpacing: '0.5px' }}>BILLING STAGE (AUTO BILL NO)</Typography>
               <input
                 type="date"
                 value={bulkBillInput.billDate}
@@ -886,11 +895,24 @@ function CellRenderer({ col, value, isDirty, rowIndex, row, onChange, onAttachSa
   // Color-coded: challan status, bill type
   const cellColor = col.colorMap?.[value] || null;
 
-  // ── Auto / Calc (may have hasAttach for Site Cash) ──────────────────────────
+  // ── Auto / Calc (may have hasAttach for Site Cash or Bill PDF) ────────────────
   if (col.type === 'auto' || col.type === 'calc') {
     const bg = cellColor ? cellColor : (col.type === 'auto'
       ? (isDirty ? 'rgba(254,243,199,0.5)' : 'rgba(237,233,254,0.18)')
       : (isDirty ? 'rgba(254,243,199,0.5)' : 'rgba(209,250,229,0.25)'));
+
+    if (col.hasAttach === 'bill_pdf_auto') {
+      const attachUrl = row?.['BILL_PDF_URL'];
+      return (
+        <td style={{ ...cellStyle, background: bg, padding: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
+            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', padding: '4px 5px', color: '#1e293b' }}>{value || ''}</span>
+            <AttachButton rowId={row?._id} attachType="bill_pdf" existingUrl={attachUrl} onSaved={onAttachSaved} />
+          </div>
+        </td>
+      );
+    }
+
     if (col.hasAttach === 'site_cash_auto' || col.hasAttach === 'office_cash_auto') {
       // Auto-fetched from voucher slip PDF — show view-only icon, no manual upload
       const voucherPdfUrl = col.hasAttach === 'site_cash_auto' ? row?.['SITE_CASH_PROOF_URL'] : row?.['OFFICE_CASH_PROOF_URL'];

@@ -82,8 +82,9 @@ const COLUMNS = [
 
 export default function PartyPaymentDetails({ onBack }) {
   const now = new Date();
+  const currentFyStart = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
   const [selMonth, setSelMonth] = useState(now.getMonth() + 1);
-  const [selYear,  setSelYear]  = useState(now.getFullYear());
+  const [selYear,  setSelYear]  = useState(`${currentFyStart}-${currentFyStart + 1}`);
 
   const [rows,       setRows]       = useState([]);
   const [localEdits, setLocalEdits] = useState({});
@@ -93,13 +94,15 @@ export default function PartyPaymentDetails({ onBack }) {
   const [debugInfo,  setDebugInfo]  = useState('');
 
   const yearOptions = [];
-  for (let y = now.getFullYear() - 2; y <= now.getFullYear() + 1; y++) yearOptions.push(y);
+  for (let y = currentFyStart - 2; y <= currentFyStart + 1; y++) yearOptions.push(`${y}-${y + 1}`);
 
   // ── Fetch ────────────────────────────────────────────────────────────────────
   const fetchData = async () => {
     setLoading(true);
     setLocalEdits({});
     setDebugInfo('');
+    const fyStartYear = parseInt(selYear.split('-')[0], 10);
+    const calendarYear = selMonth >= 4 ? fyStartYear : fyStartYear + 1;
     try {
       // 1. Truck contacts → vehicle→owner map
       const truckRes = await axios.get(`${API_URL}/truck-contacts`);
@@ -116,14 +119,14 @@ export default function PartyPaymentDetails({ onBack }) {
 
       // 2. Cement register entries for this month via our date-aware endpoint
       const cementRes = await axios.get(`${API_URL}/party-payment/cement-data`, {
-        params: { month: selMonth, year: selYear }
+        params: { month: selMonth, year: calendarYear }
       });
       const entries = cementRes.data?.entries || [];
       setDebugInfo(`Cement entries for month: ${entries.length}`);
 
       // 3. Saved manual overrides
       const manualRes = await axios.get(`${API_URL}/party-payment`, {
-        params: { month: selMonth, year: selYear }
+        params: { month: selMonth, year: calendarYear }
       });
       const manuals = manualRes.data || [];
       const manualMap = {};
@@ -339,6 +342,8 @@ export default function PartyPaymentDetails({ onBack }) {
     const dirtyIdxs = Object.keys(localEdits).map(Number);
     if (!dirtyIdxs.length) return setSnack({ severity: 'info', msg: 'No changes to save.' });
     setSaving(true);
+    const fyStartYear = parseInt(selYear.split('-')[0], 10);
+    const calendarYear = selMonth >= 4 ? fyStartYear : fyStartYear + 1;
     try {
       const token = localStorage.getItem('token');
       const data  = dirtyIdxs.map(ri => {
@@ -358,7 +363,7 @@ export default function PartyPaymentDetails({ onBack }) {
         };
       });
       await axios.post(`${API_URL}/party-payment/bulk`,
-        { month: selMonth, year: selYear, data },
+        { month: selMonth, year: calendarYear, data },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setSnack({ severity: 'success', msg: 'Saved successfully!' });
@@ -378,8 +383,10 @@ export default function PartyPaymentDetails({ onBack }) {
 
   const handleExport = () => {
     if (!computedRows.length) return setSnack({ severity: 'warning', msg: 'No data to export.' });
+    const fyStartYear = parseInt(selYear.split('-')[0], 10);
+    const calendarYear = selMonth >= 4 ? fyStartYear : fyStartYear + 1;
     exportToCsv(
-      `PartyPayment_${MONTH_NAMES[selMonth - 1]}_${selYear}.xls`,
+      `PartyPayment_${MONTH_NAMES[selMonth - 1]}_${calendarYear}.xls`,
       [...computedRows, { 'OWNER NAME': 'TOTAL', ...totals }]
     );
   };
@@ -417,9 +424,9 @@ export default function PartyPaymentDetails({ onBack }) {
               {MONTH_NAMES.map((m, i) => <MenuItem key={i} value={i + 1}>{m}</MenuItem>)}
             </Select>
           </FormControl>
-          <FormControl size="small" sx={{ minWidth: 100 }}>
-            <InputLabel>Year</InputLabel>
-            <Select value={selYear} label="Year" onChange={e => setSelYear(e.target.value)}>
+          <FormControl size="small" sx={{ minWidth: 120 }}>
+            <InputLabel>Financial Year</InputLabel>
+            <Select value={selYear} label="Financial Year" onChange={e => setSelYear(e.target.value)}>
               {yearOptions.map(y => <MenuItem key={y} value={y}>{y}</MenuItem>)}
             </Select>
           </FormControl>

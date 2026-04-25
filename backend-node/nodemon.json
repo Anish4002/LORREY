@@ -1,6 +1,6 @@
 {
   "watch": ["server.js", "routes", "models", "middleware", "utils", "socket.js"],
   "ext": "js,json",
-  "ignore": ["node_modules/*", "*.log", "uploads/*", "Lorrey_Scans/*"],
-  "delay": 500
+  "ignore": ["node_modules/*", "*.log", "*.txt", "request_log.txt", "uploads/*", "Lorrey_Scans/*"],
+  "delay": 1000
 }

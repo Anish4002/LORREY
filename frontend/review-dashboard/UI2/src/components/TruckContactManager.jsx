@@ -667,17 +667,17 @@ export default function TruckContactManager({ open, onClose }) {
                         </FieldBox>
                         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1.2fr 1fr' }, gap: 2 }}>
                           {tf('Owner Contact No.', 'contactNo', PhoneIcon)}
-                          {tf('PAN Card No.', 'panNo', ArticleIcon)}
+                          {uploadTf('PAN Card No.', 'panNo', 'pan', ArticleIcon)}
                         </Box>
                         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
-                          {tf('Aadhar Number', 'aadharNo', BadgeIcon)}
+                          {uploadTf('Aadhar Number', 'aadharNo', 'aadhar', BadgeIcon)}
                           {selectTf('PAN-Aadhar Link Status', 'panAadharLink', ['Yes', 'No'], BadgeIcon)}
                         </Box>
                         {tf('Complete Correspondence Address', 'address', HomeIcon)}
 
                         <SectionLabel icon={ReceiptIcon} label="Owner Banking Details" />
                         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1.2fr 1fr' }, gap: 2 }}>
-                          {tf('Bank Account No.', 'ownerBankAcc', ArticleIcon)}
+                          {uploadTf('Bank Account No.', 'ownerBankAcc', 'bank', ArticleIcon)}
                           {tf('IFSC Code', 'ownerIfsc', ArticleIcon)}
                         </Box>
 
@@ -701,7 +701,7 @@ export default function TruckContactManager({ open, onClose }) {
                           {tf('Driver Address', 'driverAddress', HomeIcon)}
                         </Box>
                         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
-                          {tf('License No (DL)', 'licenseNo', ArticleIcon)}
+                          {uploadTf('License No (DL)', 'licenseNo', 'dl', ArticleIcon)}
                           {tf('License Expiry Date', 'licenseValidity', EventIcon)}
                         </Box>
                         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>

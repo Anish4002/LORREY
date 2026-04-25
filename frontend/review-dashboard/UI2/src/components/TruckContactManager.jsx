@@ -121,7 +121,6 @@ export default function TruckContactManager({ open, onClose }) {
     { id: 'rc', label: 'RC (Registration Certificate)', status: 'Pending' },
     { id: 'dl', label: 'Driving License', status: 'Pending' },
     { id: 'insurance', label: 'Insurance Policy', status: 'Pending' },
-    { id: 'puc', label: 'PUC Copy', status: 'Pending' },
   ]);
 
   useEffect(() => {
@@ -662,30 +661,19 @@ export default function TruckContactManager({ open, onClose }) {
                       </Box>
                     )}
 
-                    {/* Sub-Tab 2: COMPLIANCE & VALIDITY */}
+                     {/* Sub-Tab 2: COMPLIANCE & VALIDITY */}
                     {formTab === 2 && (
                       <Box sx={{ animation: 'fadeIn 0.3s ease-in-out' }}>
-                        <SectionLabel icon={EventIcon} label="Road Side Validities" />
+                        <SectionLabel icon={EventIcon} label="Vehicle Compliance" />
                         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5 }}>
                           {uploadTf('RC Validity', 'rcValidity', 'rc', EventIcon)}
                           {uploadTf('Insurance Validity', 'insuranceValidity', 'insurance', EventIcon)}
-                          {tf('Fitness Validity', 'fitnessValidity', EventIcon)}
-                          {tf('Road Tax Validity', 'roadTaxValidity', EventIcon)}
-                          {uploadTf('PUC Validity', 'puc', 'puc', EventIcon)}
-                          {tf('NP Validity', 'npValidity', EventIcon)}
                         </Box>
-                        {tf('Permit Details & Serial', 'permit', ArticleIcon)}
-
-                        <SectionLabel icon={ReceiptIcon} label="Financial Settings" />
-                        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
-                          {selectTf('NIL TDS Option', 'nilTds', ['Yes', 'No'], ArticleIcon)}
-                          {tf('TDS Category', 'tdsApp', ReceiptIcon)}
+                        <Box sx={{ mt: 2, p: 2, bgcolor: '#fff9c4', borderRadius: '12px', border: '1px solid #fff176' }}>
+                           <Typography variant="caption" fontWeight={800} color="#f57f17">
+                             IMPORTANT: RC and Insurance validity updates must match the attached PDF certificates.
+                           </Typography>
                         </Box>
-                        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
-                          {tf('Basic Freight Comm', 'basicFreight', ReceiptIcon)}
-                          {tf('Incentive Comm', 'incentiveComm', ReceiptIcon)}
-                        </Box>
-                        {tf('Specific Vehicle Detail', 'vehType', DirectionsCarIcon)}
                       </Box>
                     )}
                   </Box>

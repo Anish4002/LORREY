@@ -31,7 +31,8 @@ export const COLUMNS = [
 
   // Pump Cash Details
   { key: 'P_OPENING', label: 'Opening Balance', width: 120, type: 'manual', group: 'pump' },
-  { key: 'P_SOURCE', label: 'Cash Source', width: 220, type: 'manual', group: 'pump' },
+  { key: 'P_LOAN_RECV', label: 'Loan Recv', width: 140, type: 'manual', group: 'pump', subGroup: 'Cash Source' },
+  { key: 'P_LOAN_PAY', label: 'Loan Pay', width: 140, type: 'manual', group: 'pump', subGroup: 'Cash Source' },
   { key: 'P_WITHDRAW', label: 'Cash withdraw', width: 120, type: 'manual', group: 'pump' },
   {
     key: 'P_TOTAL', label: 'Total Amount', width: 120, type: 'calc', group: 'pump',
@@ -108,7 +109,7 @@ export const COLUMNS = [
 ];
 
 // Numeric columns for monthly summary totals
-const NUMERIC_COLS = COLUMNS.filter(c => !['DATE', 'P_SOURCE', 'REMARKS_EXP', 'REMARKS'].includes(c.key));
+const NUMERIC_COLS = COLUMNS.filter(c => !['DATE', 'P_LOAN_RECV', 'P_LOAN_PAY', 'REMARKS_EXP', 'REMARKS'].includes(c.key));
 
 function applyCalcs(row) {
   const r = { ...row };
@@ -225,13 +226,13 @@ export default function MainCashbook({ onBack }) {
       // Normalise date to DD-MM-YYYY for comparison
       const normDate = (() => {
         const p = String(date).trim().split(/[-\/]/);
-        if (p.length === 3) return `${p[0].padStart(2,'0')}-${p[1].padStart(2,'0')}-${p[2]}`;
+        if (p.length === 3) return `${p[0].padStart(2, '0')}-${p[1].padStart(2, '0')}-${p[2]}`;
         return date;
       })();
       setEntries(prev => prev.map(row => {
         const rDate = (() => {
           const p = String(row.DATE || '').trim().split(/[-\/]/);
-          if (p.length === 3) return `${p[0].padStart(2,'0')}-${p[1].padStart(2,'0')}-${p[2]}`;
+          if (p.length === 3) return `${p[0].padStart(2, '0')}-${p[1].padStart(2, '0')}-${p[2]}`;
           return row.DATE;
         })();
         if (rDate !== normDate) return row;
@@ -291,6 +292,29 @@ export default function MainCashbook({ onBack }) {
 
   const handleCellEdit = useCallback((rowId, field, value) => {
     setLocalData(prev => ({ ...prev, [rowId]: { ...(prev[rowId] || {}), [field]: value } }));
+  }, []);
+
+  const handleBlur = useCallback((rowId, field, value, rawRow) => {
+    if (field === 'P_WITHDRAW') {
+      const loanPay = String(rawRow.P_LOAN_PAY || '');
+      if (loanPay.startsWith('DAC-RS-')) {
+        const match = loanPay.match(/DAC-RS-(\d+(?:\.\d+)?)/);
+        if (match) {
+          const minVal = parseFloat(match[1]);
+          const currentVal = parseFloat(value);
+          if (isNaN(currentVal) || currentVal < minVal) {
+            setLocalData(prev => ({
+              ...prev,
+              [rowId]: {
+                ...(prev[rowId] || {}),
+                [field]: String(minVal)
+              }
+            }));
+            setSnack({ severity: 'warning', msg: `Withdraw amount cannot be less than Account Details synced amount (${minVal})` });
+          }
+        }
+      }
+    }
   }, []);
 
   const handleAddRow = async () => {
@@ -464,10 +488,10 @@ export default function MainCashbook({ onBack }) {
           <thead>
             {/* Super-group headers */}
             <tr>
-              <th rowSpan={2} style={{ position: 'sticky', top: 0, zIndex: 4, width: 40, background: '#1e293b', borderRight: '1px solid #334155' }}>
+              <th rowSpan={3} style={{ position: 'sticky', top: 0, zIndex: 4, width: 40, background: '#1e293b', borderRight: '1px solid #334155' }}>
                 <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} style={{ accentColor: '#7c3aed' }} />
               </th>
-              <th rowSpan={2} style={{
+              <th rowSpan={3} style={{
                 position: 'sticky', top: 0, zIndex: 4, background: '#334155', color: '#fff',
                 fontSize: 11, fontWeight: 900, border: '1px solid #475569'
               }}>
@@ -489,14 +513,54 @@ export default function MainCashbook({ onBack }) {
                 );
               })}
             </tr>
-            {/* Column headers */}
+            {/* Column headers (Row 2) */}
             <tr>
-              {COLUMNS.map(col => {
+              {(() => {
+                const cols = [];
+                const seenSubGroups = new Set();
+                for (let i = 0; i < COLUMNS.length; i++) {
+                  const col = COLUMNS[i];
+                  const gc = GROUP_COLORS[col.group];
+                  
+                  if (col.subGroup) {
+                    if (!seenSubGroups.has(col.subGroup)) {
+                      seenSubGroups.add(col.subGroup);
+                      const subGroupCols = COLUMNS.filter(c => c.subGroup === col.subGroup);
+                      cols.push(
+                        <th key={`subGroup-${col.subGroup}`} colSpan={subGroupCols.length} style={{
+                          position: 'sticky', top: '33px', zIndex: 3,
+                          background: gc.bg, color: '#1e293b', padding: '4px',
+                          textAlign: 'center', fontSize: '11px', fontWeight: 900,
+                          border: '1px solid #cbd5e1', borderBottom: '1px solid #94a3b8'
+                        }}>
+                          {col.subGroup}
+                        </th>
+                      );
+                    }
+                  } else {
+                    cols.push(
+                      <th key={col.key} rowSpan={2} style={{
+                        position: 'sticky', top: '33px', zIndex: 3,
+                        background: gc.bg, color: '#1e293b', padding: '8px 4px',
+                        textAlign: 'center', fontSize: '11px', fontWeight: 800,
+                        border: '1px solid #cbd5e1', whiteSpace: 'pre-line'
+                      }}>
+                        {col.label}
+                      </th>
+                    );
+                  }
+                }
+                return cols;
+              })()}
+            </tr>
+            {/* Sub-Column headers (Row 3) */}
+            <tr>
+              {COLUMNS.filter(c => c.subGroup).map(col => {
                 const gc = GROUP_COLORS[col.group];
                 return (
                   <th key={col.key} style={{
-                    position: 'sticky', top: '33px', zIndex: 3,
-                    background: gc.bg, color: '#1e293b', padding: '8px 4px',
+                    position: 'sticky', top: '56px', zIndex: 3,
+                    background: gc.bg, color: '#1e293b', padding: '4px',
                     textAlign: 'center', fontSize: '11px', fontWeight: 800,
                     border: '1px solid #cbd5e1', whiteSpace: 'pre-line'
                   }}>
@@ -559,8 +623,8 @@ export default function MainCashbook({ onBack }) {
                       cellBg = '#fca5a5'; // red — invalid date
                     } else if (col.key === 'DIFFERENCE' && num(displayVal) !== 0) {
                       cellBg = '#fca5a5'; // red mismatch
-                    } else if (col.key === 'P_SOURCE' && (sourceYellow || String(displayVal).startsWith('DAC-RS-'))) {
-                      cellBg = '#fef08a'; // yellow when Others > 0
+                    } else if (col.key === 'P_LOAN_PAY' && (sourceYellow || String(displayVal).startsWith('DAC-RS-'))) {
+                      cellBg = '#fef08a'; // yellow when Others > 0 or Account Details sync
                     } else if (isDirty) {
                       cellBg = '#fff3cd'; // dirty edits
                     } else if (isCalcLike) {
@@ -582,6 +646,7 @@ export default function MainCashbook({ onBack }) {
                             value={displayVal}
                             title={dateError ? `⚠️ ${MONTH_NAMES[selMonth - 1]} only has ${new Date(selYear, selMonth, 0).getDate()} days` : undefined}
                             onChange={e => handleCellEdit(row._id, col.key, e.target.value)}
+                            onBlur={e => handleBlur(row._id, col.key, e.target.value, row)}
                             style={{
                               width: '100%', height: '100%', padding: '6px',
                               border: dateError ? '2px solid #dc2626' : 'none',

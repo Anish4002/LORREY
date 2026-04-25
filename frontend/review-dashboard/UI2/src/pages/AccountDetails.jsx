@@ -145,13 +145,43 @@ export default function AccountDetails({ onBack }) {
     [entries, localData]);
 
   const filteredRows = useMemo(() => {
-    if (!filterFrom && !filterTo) return computedRows;
-    return computedRows.filter(row => {
-      const d = row['Transaction Date'] || '';
-      if (filterFrom && d < filterFrom) return false;
-      if (filterTo && d > filterTo) return false;
-      return true;
+    const parseDateStr = (dStr) => {
+      if (!dStr) return null;
+      const parts = String(dStr).split(/[-\/]/);
+      if (parts.length !== 3) return null;
+      if (parts[0].length === 4) {
+        return new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2])).getTime();
+      } else {
+        return new Date(parseInt(parts[2]), parseInt(parts[1])-1, parseInt(parts[0])).getTime();
+      }
+    };
+
+    let result = [...computedRows];
+    if (filterFrom || filterTo) {
+      const fromTime = filterFrom ? new Date(filterFrom).getTime() : 0;
+      const toTime = filterTo ? new Date(filterTo).getTime() : Infinity;
+      result = result.filter(row => {
+        const d = row['Transaction Date'] || row.transactionDate || '';
+        const t = parseDateStr(d);
+        if (!t) return true; // keep empty dates if filtering? Or drop them? Let's keep or drop? Let's drop if there is a filter.
+        if (fromTime && t < fromTime) return false;
+        if (toTime && toTime !== Infinity && t > toTime) return false;
+        return true;
+      });
+    }
+
+    result.sort((a, b) => {
+      const tA = parseDateStr(a['Transaction Date'] || a.transactionDate) || 0;
+      const tB = parseDateStr(b['Transaction Date'] || b.transactionDate) || 0;
+      // Also consider created_at for stable sort if dates are equal
+      if (tB !== tA) return tB - tA; 
+      // If dates are equal, sort new rows to top, or use internal ID
+      if (a.isNewRow && !b.isNewRow) return -1;
+      if (!a.isNewRow && b.isNewRow) return 1;
+      return 0;
     });
+
+    return result;
   }, [computedRows, filterFrom, filterTo]);
 
   const isFiltered = !!(filterFrom || filterTo);
@@ -162,8 +192,15 @@ export default function AccountDetails({ onBack }) {
 
   const handleAddRow = () => {
     const newId = 'new_' + Date.now();
+    const today = new Date().toISOString().split('T')[0]; // Auto-fill today's date (YYYY-MM-DD)
     setEntries(prev => [{ _id: newId, isNewRow: true }, ...prev]);
-    setLocalData(prev => ({ ...prev, [newId]: { isNewRow: true } }));
+    setLocalData(prev => ({ 
+      ...prev, 
+      [newId]: { 
+        isNewRow: true,
+        'Transaction Date': today 
+      } 
+    }));
   };
 
   const handleBulkDelete = async () => {
@@ -171,6 +208,23 @@ export default function AccountDetails({ onBack }) {
       const token = localStorage.getItem('token');
       const ids = [...selectedIds].filter(id => !id.startsWith('new_'));
       if (ids.length > 0) {
+        // Clear main cashbook for each deleted 'Main cash' row
+        for (const id of ids) {
+          const row = entries.find(e => e._id === id);
+          if (row && row['Ledger Name'] && row['Ledger Name'].toLowerCase() === 'main cash') {
+            const transactionDate = row['Transaction Date'] || row.transactionDate;
+            if (transactionDate) {
+              try {
+                await axios.post(`${API_URL}/account-details/clear-main-cash`, { transactionDate }, {
+                  headers: { Authorization: `Bearer ${token}` }
+                });
+              } catch (e) {
+                console.warn('Failed to clear main cash for date:', transactionDate);
+              }
+            }
+          }
+        }
+
         await axios.delete(`${API_URL}/account-details/bulk-delete`, {
           headers: { Authorization: `Bearer ${token}` },
           data: { ids },
@@ -190,11 +244,26 @@ export default function AccountDetails({ onBack }) {
     setSaving(true);
     try {
       const token = localStorage.getItem('token');
-      const updates = Object.entries(localData).map(([id, changes]) => ({
-        id: id.startsWith('new_') ? null : id,
-        isNewRow: id.startsWith('new_'),
-        changes
-      }));
+      const updates = [];
+      
+      // Validation: Ensure all modified rows have a Transaction Date
+      for (const [id, changes] of Object.entries(localData)) {
+        const originalEntry = entries.find(e => e._id === id);
+        const transactionDate = changes['Transaction Date'] ?? originalEntry?.['Transaction Date'] ?? originalEntry?.transactionDate ?? '';
+        
+        if (!transactionDate) {
+          setSnack({ severity: 'error', msg: 'Error: Transaction Date is required for all rows.' });
+          setSaving(false);
+          return;
+        }
+        
+        updates.push({
+          id: id.startsWith('new_') ? null : id,
+          isNewRow: id.startsWith('new_'),
+          changes
+        });
+      }
+
       await axios.put(`${API_URL}/account-details/bulk-update`, { updates }, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -370,10 +439,7 @@ export default function AccountDetails({ onBack }) {
           </Button>
           <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={handleBankStatementUpload} />
 
-          <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={handleAddRow}
-            sx={{ fontWeight: 800, borderRadius: 2, px: 2, fontSize: '12px', bgcolor: '#0f766e', '&:hover': { bgcolor: '#115e59' } }}>
-            Add Row
-          </Button>
+
           <Tooltip title="Discard & reload">
             <IconButton size="small" onClick={() => fetchData()} sx={{ bgcolor: '#f1f5f9' }}>
               <RefreshIcon fontSize="small" />

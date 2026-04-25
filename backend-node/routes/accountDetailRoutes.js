@@ -115,9 +115,20 @@ router.delete('/bulk-delete', async (req, res) => {
 // GET already-uploaded bank statement date ranges
 router.get('/uploaded-date-ranges', async (req, res) => {
   try {
-    const docs = await AccountDetail.find({ _source: 'bank_statement' }, { transactionDate: 1 });
+    const docs = await AccountDetail.find({}, { transactionDate: 1 });
     const dateSet = new Set();
-    docs.forEach(d => { if (d.transactionDate) dateSet.add(d.transactionDate); });
+    docs.forEach(d => {
+      if (d.transactionDate) {
+        const parts = d.transactionDate.split(/[-\/]/);
+        if (parts.length === 3) {
+          if (parts[0].length === 4) {
+            dateSet.add(`${parts[0]}-${String(parts[1]).padStart(2, '0')}-${String(parts[2]).padStart(2, '0')}`);
+          } else {
+            dateSet.add(`${parts[2]}-${String(parts[1]).padStart(2, '0')}-${String(parts[0]).padStart(2, '0')}`);
+          }
+        }
+      }
+    });
     res.json({ success: true, uploadedDates: Array.from(dateSet).sort() });
   } catch (error) {
     console.error('Fetch uploaded date ranges error:', error);
@@ -135,9 +146,8 @@ router.post('/upload-statement', statementUpload.single('statement'), async (req
       return res.status(400).json({ success: false, error: 'fromDate and toDate are required.' });
     }
 
-    // Check for existing bank statement records in this date range
+    // Check for existing records in this date range
     const existing = await AccountDetail.findOne({
-      _source: 'bank_statement',
       transactionDate: { $gte: fromDate, $lte: toDate }
     });
 
@@ -190,7 +200,7 @@ router.post('/upload-remittance/:id', remittanceUpload.single('file'), async (re
     try {
       const io = getIO();
       if (io) io.emit('accountDetailsUpdate', { action: 'remittance-upload' });
-    } catch (_) {}
+    } catch (_) { }
 
     res.json({ success: true, url: doc.remittanceFileUrl, filename: doc.remittanceFileName });
   } catch (error) {
@@ -239,7 +249,7 @@ router.post('/clear-main-cash', async (req, res) => {
 
     await col.updateOne(
       { _id: cashbookRow._id },
-      { $set: { P_WITHDRAW: 0, P_SOURCE: '' } }
+      { $set: { P_WITHDRAW: 0, P_LOAN_PAY: '' } }
     );
 
     try {
@@ -299,7 +309,7 @@ router.post('/sync-main-cash', async (req, res) => {
 
     // Find matching cashbook row
     let cashbookRow = await col.findOne({ DATE: { $in: dateVariants }, month: m, year: y });
-    
+
     if (!cashbookRow) {
       // Create new row if missing
       const highest = await col.find({ month: m, year: y }).sort({ "SL NO": -1 }).limit(1).toArray();
@@ -312,7 +322,8 @@ router.post('/sync-main-cash', async (req, res) => {
         year: y,
         "SL NO": nextSl,
         P_OPENING: 0,
-        P_SOURCE: sourceText,
+        P_LOAN_RECV: '',
+        P_LOAN_PAY: sourceText,
         P_WITHDRAW: amount,
         P_GIVEN_DAC: 0,
         P_GIVEN_OFFICE: 0,
@@ -323,15 +334,14 @@ router.post('/sync-main-cash', async (req, res) => {
         O_OPENING: 0,
         _created_at: new Date()
       };
-      
+
       const result = await col.insertOne(newEntry);
       cashbookRow = { _id: result.insertedId, ...newEntry };
       console.log(`[SyncMainCash] Created new cashbook row for ${transactionDate}`);
     } else {
-      // Update existing row
       await col.updateOne(
         { _id: cashbookRow._id },
-        { $set: { P_WITHDRAW: amount, P_SOURCE: sourceText } }
+        { $set: { P_WITHDRAW: amount, P_LOAN_PAY: sourceText } }
       );
       console.log(`[SyncMainCash] Updated existing cashbook row for ${transactionDate}`);
     }
